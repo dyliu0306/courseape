@@ -1,8 +1,8 @@
 use anyhow::Context;
 use zeroize::Zeroize;
 
-const SERVICE: &str = "openape";
-const ACCOUNT: &str = "moodle-auto-login";
+const SERVICE: &str = "courseape";
+const ACCOUNT: &str = "cycu-itouch";
 
 pub struct StoredCredentials {
     pub student_id: String,

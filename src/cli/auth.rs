@@ -100,8 +100,9 @@ pub async fn run_logout(_cli: &Cli, clear_credentials: bool) -> anyhow::Result<(
     eprintln!("Session cleared.");
 
     if clear_credentials {
-        eprintln!("WARNING: This will delete the shared OS keyring entry used by openape.");
-        eprintln!("Type 'y' to confirm:");
+            eprintln!("WARNING: This will delete the stored credentials from OS keyring.");
+            eprintln!("You will need to re-enter credentials next time.");
+            eprintln!("Type 'y' to confirm:");
         let mut input = String::new();
         std::io::stdin().read_line(&mut input)?;
         if input.trim().eq_ignore_ascii_case("y") {
@@ -118,8 +119,7 @@ pub async fn run_logout(_cli: &Cli, clear_credentials: bool) -> anyhow::Result<(
 pub async fn run_credentials(cmd: &CredentialsCommands, _cli: &Cli) -> anyhow::Result<()> {
     match cmd {
         CredentialsCommands::Set => {
-            eprintln!("WARNING: This will update the shared OS keyring entry used by openape.");
-            eprintln!("Both courseape and openape will use the new credentials.");
+            eprintln!("WARNING: This will update the stored credentials in OS keyring.");
             eprintln!();
             let (id, pass) = if let (Ok(id), Ok(pass)) = (
                 std::env::var("CYCU_USERNAME"),

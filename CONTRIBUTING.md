@@ -97,4 +97,4 @@ cargo test -- --nocapture    # 顯示 eprintln 輸出
 - **AI-first 成績解析**：成績 HTML 由 Agent 分析，不使用 deterministic parser
 - **OP_TYPE 判斷通識向度**：不靠課名猜測，用歷史開課資料的 OP_TYPE 欄位
 - **Offerings PK = (code, term, class_dept)**：避免同課程代碼不同班級的資料遺失
-- **keyring v4**：與 openape 相容
+- **keyring v4**：使用獨立鑰匙圈條目 `courseape/cycu-itouch`

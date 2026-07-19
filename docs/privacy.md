@@ -2,7 +2,7 @@
 
 ## 帳密儲存
 
-CourseApe 與 openape 共用同一組 OS 鑰匙圈條目（`openape/moodle-auto-login`）。
+CourseApe 使用獨立的 OS 鑰匙圈條目（`courseape/cycu-itouch`）。
 
 - **Windows**：認證管理員（Credential Manager）
 - **macOS**：鑰匙圈（Keychain）
