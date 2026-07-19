@@ -1,7 +1,7 @@
 use crate::storage;
 use crate::{Cli, DataCommands};
 use anyhow::Context;
-use std::io::{Read, Write};
+use std::io::Read;
 
 pub async fn run(cmd: &DataCommands, _cli: &Cli) -> anyhow::Result<()> {
     match cmd {
@@ -33,7 +33,7 @@ pub async fn run(cmd: &DataCommands, _cli: &Cli) -> anyhow::Result<()> {
                     }
                 }
                 "grade-html" => {
-                    // Export raw grade HTML for Agent analysis
+                    // Export grade HTML path and metadata for Agent analysis
                     let snap_dir = dirs::data_dir()
                         .or_else(dirs::config_dir)
                         .ok_or_else(|| anyhow::anyhow!("Cannot find data dir"))?
@@ -52,8 +52,21 @@ pub async fn run(cmd: &DataCommands, _cli: &Cli) -> anyhow::Result<()> {
                     }
                     let path = grade_file.ok_or_else(|| anyhow::anyhow!("No grade snapshot found. Run `sync grades` first."))?;
                     let bytes = std::fs::read(&path)?;
-                    // Output raw bytes (Agent will handle encoding)
-                    std::io::stdout().write_all(&bytes)?;
+                    let hash = {
+                        use sha2::Digest;
+                        let mut hasher = sha2::Sha256::new();
+                        hasher.update(&bytes);
+                        format!("{:x}", hasher.finalize())
+                    };
+                    let metadata = serde_json::json!({
+                        "schema_version": "1",
+                        "content_type": "text/html",
+                        "encoding": "utf-8",
+                        "path": path.to_string_lossy(),
+                        "size_bytes": bytes.len(),
+                        "sha256": hash,
+                    });
+                    println!("{}", serde_json::to_string_pretty(&metadata)?);
                 }
                 "offerings" => {
                     // Export all offerings from all terms (for category lookup)

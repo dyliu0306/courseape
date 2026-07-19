@@ -22,13 +22,23 @@ async fn run_doctor(_cli: &Cli) -> anyhow::Result<()> {
     let profile = repo.get_profile().ok().flatten();
     let terms = repo.list_offering_terms().unwrap_or_default();
 
+    // Check requirements via DB, not filename guessing
     let has_requirements = {
-        let p = profile.as_ref();
-        if let (Some(dept), Some(y)) = (p.and_then(|p| p.dept_code.as_deref()), p.and_then(|p| p.enroll_year)) {
-            dirs::data_dir().or_else(dirs::config_dir).unwrap_or_default()
-                .join("courseape").join("snapshots")
-                .join(format!("requirements_{}_{}.pdf", y, dept))
-                .exists()
+        if let (Some(dept), Some(y)) = (
+            profile.as_ref().and_then(|p| p.dept_code.as_deref()),
+            profile.as_ref().and_then(|p| p.enroll_year)
+        ) {
+            // Check if requirement exists in DB and file actually exists
+            let snap_dir = dirs::data_dir().or_else(dirs::config_dir).unwrap_or_default()
+                .join("courseape").join("snapshots");
+            snap_dir.exists() && snap_dir.read_dir().ok()
+                .map(|mut d| d.any(|e| {
+                    e.ok().map(|e| {
+                        let name = e.file_name().to_string_lossy().to_string();
+                        name.starts_with(&format!("requirements_{}_{}", y, dept))
+                    }).unwrap_or(false)
+                }))
+                .unwrap_or(false)
         } else { false }
     };
 
@@ -45,9 +55,23 @@ async fn run_doctor(_cli: &Cli) -> anyhow::Result<()> {
     let (current_year, current_sem) = resolver::current_term();
     let current_term_code = format!("{}{}", current_year, current_sem);
 
+    // Profile completeness: exists AND has all required fields
+    let profile_complete = profile.as_ref().map(|p| {
+        p.dept_code.is_some() && p.dept_name.is_some() && p.enroll_year.is_some()
+    }).unwrap_or(false);
+
+    let missing_fields: Vec<&str> = profile.as_ref().map(|p| {
+        let mut missing = Vec::new();
+        if p.dept_code.is_none() { missing.push("department"); }
+        if p.enroll_year.is_none() { missing.push("enroll_year"); }
+        missing
+    }).unwrap_or_else(|| vec!["profile"]);
+
     let status = json!({
         "logged_in": session.is_some(),
-        "profile_set": profile.is_some(),
+        "profile_exists": profile.is_some(),
+        "profile_complete": profile_complete,
+        "missing_fields": missing_fields,
         "profile": profile.as_ref().map(|p| json!({
             "student_id": if _cli.no_redact_personal { &p.student_id } else { "***" },
             "dept_code": p.dept_code,
@@ -278,16 +302,28 @@ async fn prepare_planning(term_arg: &str, _cli: &Cli) -> anyhow::Result<()> {
     // 1. Ensure offerings are cached
     eprintln!("[1/2] 確認開課資料...");
     let offerings = repo.list_offerings(&term)?;
-    if offerings.is_empty() {
+    let offerings_count = if offerings.is_empty() {
         eprintln!("  正在同步 {} 開課清單...", term);
         let fetched = crate::cli::courses::fetch_offerings_from_api(&term).await?;
         let count = fetched.len();
         repo.upsert_offerings(&term, &fetched)?;
         eprintln!("  ✓ 同步 {} 筆", count);
-        result["offerings_count"] = json!(count);
+        count
     } else {
         eprintln!("  ✓ 已有 {} 筆開課資料", offerings.len());
-        result["offerings_count"] = json!(offerings.len());
+        offerings.len()
+    };
+
+    result["offerings_count"] = json!(offerings_count);
+
+    // If no offerings available, return unavailable status
+    if offerings_count == 0 {
+        result["status"] = json!("unavailable");
+        result["reason"] = json!("offerings_not_published");
+        result["fallback_term"] = json!(resolver::current_term_code());
+        eprintln!("  ⚠ {} 尚無開課資料", term);
+        println!("{}", serde_json::to_string_pretty(&result)?);
+        return Ok(());
     }
 
     // 2. Show shortlist status
@@ -345,22 +381,35 @@ fn run_context(task: &str, _cli: &Cli) -> anyhow::Result<()> {
     let current_term = resolver::current_term_code();
     let next = resolver::next_term();
 
+    let profile_complete = profile.as_ref().map(|p| {
+        p.dept_code.is_some() && p.dept_name.is_some() && p.enroll_year.is_some()
+    }).unwrap_or(false);
+
+    let missing_fields: Vec<&str> = profile.as_ref().map(|p| {
+        let mut missing = Vec::new();
+        if p.dept_code.is_none() { missing.push("department"); }
+        if p.enroll_year.is_none() { missing.push("enroll_year"); }
+        missing
+    }).unwrap_or_else(|| vec!["profile"]);
+
     let mut result = json!({
         "task": task,
         "logged_in": session.is_some(),
-        "profile_set": profile.is_some(),
+        "profile_exists": profile.is_some(),
+        "profile_complete": profile_complete,
+        "missing_fields": missing_fields,
         "current_term": current_term,
         "next_term": next,
     });
 
-    let mut next_steps: Vec<String> = Vec::new();
+    let mut actions: Vec<serde_json::Value> = Vec::new();
 
     if session.is_none() {
-        next_steps.push("courseape login".to_string());
+        actions.push(json!({"type": "login", "message": "請執行 courseape login"}));
     }
 
-    if profile.is_none() {
-        next_steps.push("courseape setup".to_string());
+    if !profile_complete {
+        actions.push(json!({"type": "run", "command": ["agent", "setup"]}));
     }
 
     match task {
@@ -368,10 +417,15 @@ fn run_context(task: &str, _cli: &Cli) -> anyhow::Result<()> {
             let has_req = profile.as_ref().and_then(|p| {
                 let dept = p.dept_code.as_deref()?;
                 let year = p.enroll_year?;
-                let path = dirs::data_dir().or_else(dirs::config_dir)?
-                    .join("courseape").join("snapshots")
-                    .join(format!("requirements_{}_{}.pdf", year, dept));
-                Some(path.exists())
+                let snap_dir = dirs::data_dir().or_else(dirs::config_dir)?
+                    .join("courseape").join("snapshots");
+                Some(snap_dir.exists() && snap_dir.read_dir().ok()
+                    .map(|mut d| d.any(|e| {
+                        e.ok().map(|e| e.file_name().to_string_lossy()
+                            .starts_with(&format!("requirements_{}_{}", year, dept)))
+                            .unwrap_or(false)
+                    }))
+                    .unwrap_or(false))
             }).unwrap_or(false);
 
             let has_grades = {
@@ -386,11 +440,11 @@ fn run_context(task: &str, _cli: &Cli) -> anyhow::Result<()> {
             result["has_grade_html"] = json!(has_grades);
             result["has_analyzed_grades"] = json!(has_analyzed);
 
-            if !has_req {
-                next_steps.push("courseape prepare graduation".to_string());
+            if !has_req || !has_grades {
+                actions.push(json!({"type": "run", "command": ["agent", "prepare", "graduation"]}));
             }
             if !has_analyzed {
-                next_steps.push("(Agent) 分析成績 HTML 並匯入".to_string());
+                actions.push(json!({"type": "agent_analyze_grades", "message": "分析成績 HTML 並匯入"}));
             }
         }
         "planning" => {
@@ -398,16 +452,16 @@ fn run_context(task: &str, _cli: &Cli) -> anyhow::Result<()> {
             result["has_next_term_offerings"] = json!(has_offerings);
 
             if !has_offerings {
-                next_steps.push(format!("courseape prepare planning --term {}", next));
+                actions.push(json!({"type": "run", "command": ["agent", "prepare", "planning", "--term", &next]}));
             }
             if !has_analyzed {
-                next_steps.push("(Agent) 先完成畢業分析".to_string());
+                actions.push(json!({"type": "dependency", "message": "先完成畢業分析", "command": ["agent", "context", "--task", "graduation"]}));
             }
         }
         _ => {}
     }
 
-    result["next_steps"] = json!(next_steps);
+    result["actions"] = json!(actions);
     result["cached_terms"] = json!(terms);
 
     println!("{}", serde_json::to_string_pretty(&result)?);

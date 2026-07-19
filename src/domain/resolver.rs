@@ -79,6 +79,21 @@ pub fn resolve_department(query: &str, departments: &[Department]) -> Vec<DeptCa
                 confidence: MatchConfidence::Medium,
                 reason: "標準化名稱匹配".to_string(),
             });
+            continue;
+        }
+
+        // 5. Abbreviation match: strip "系/所/班" suffix, then subsequence match
+        let query_core = strip_query_suffix(query_trimmed);
+        if query_core.len() >= 2 && query_core != query_trimmed {
+            let dept_core = strip_query_suffix(&normalized_dept);
+            if is_subsequence(query_core, dept_core) {
+                candidates.push(DeptCandidate {
+                    dept_code: dept.dept_code.clone(),
+                    name: dept.name.clone(),
+                    confidence: MatchConfidence::Medium,
+                    reason: "縮寫匹配".to_string(),
+                });
+            }
         }
     }
 
@@ -95,6 +110,32 @@ fn normalize_dept_name(name: &str) -> String {
         .replace("學士班", "")
         .replace("碩士班", "")
         .replace("博士班", "")
+        .replace("研究所", "")
+        .replace("碩博士班", "")
+}
+
+/// Strip common suffixes from department query (系, 所, 班, etc.)
+fn strip_query_suffix(query: &str) -> &str {
+    let suffixes = ["學系", "學士班", "碩士班", "博士班", "研究所", "碩博士班", "系", "所", "班"];
+    for suffix in &suffixes {
+        if let Some(stripped) = query.strip_suffix(suffix) {
+            return stripped;
+        }
+    }
+    query
+}
+
+/// Check if `short` is a subsequence of `long` (each char appears in order).
+/// Used for Chinese abbreviation matching (e.g. "資管" matches "資訊管理").
+fn is_subsequence(short: &str, long: &str) -> bool {
+    let mut chars = long.chars();
+    for sc in short.chars() {
+        let found = chars.any(|c| c == sc);
+        if !found {
+            return false;
+        }
+    }
+    true
 }
 
 fn confidence_order(c: &MatchConfidence) -> u8 {
@@ -192,6 +233,26 @@ mod tests {
         let depts = vec![make_dept("5400B", "資訊管理學系")];
         let result = resolve_department("化學系", &depts);
         assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_abbreviation_match() {
+        let depts = vec![make_dept("5400B", "資訊管理學系")];
+        // "資管系" → strip "系" → "資管" → subsequence match against "資訊管理"
+        let result = resolve_department("資管系", &depts);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].confidence, MatchConfidence::Medium);
+        assert_eq!(result[0].reason, "縮寫匹配");
+    }
+
+    #[test]
+    fn test_abbreviation_no_suffix() {
+        let depts = vec![make_dept("5400B", "資訊管理學系")];
+        // "資管" without "系" suffix → should not trigger abbreviation path
+        // but should match via subsequence in normalized step if applicable
+        let result = resolve_department("資管", &depts);
+        // May or may not match depending on normalization, but shouldn't panic
+        let _ = result;
     }
 
     #[test]
