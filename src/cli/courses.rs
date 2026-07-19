@@ -451,7 +451,7 @@ fn pad_unicode(s: &str, target_width: usize) -> String {
 }
 
 /// Fetch course offerings from iTouch courseQuery API.
-async fn fetch_offerings_from_api(term: &str) -> anyhow::Result<Vec<crate::domain::course_offering::CourseOffering>> {
+pub async fn fetch_offerings_from_api(term: &str) -> anyhow::Result<Vec<crate::domain::course_offering::CourseOffering>> {
     let session = crate::auth::session::Session::load()?.ok_or(
         crate::error::CourseapeError::NotLoggedIn
     )?;

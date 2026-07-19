@@ -78,6 +78,9 @@ enum Commands {
     Data(Box<DataCommands>),
     #[command(subcommand)]
     Skills(SkillsCommands),
+    /// High-level commands for Agent integration
+    #[command(subcommand)]
+    Agent(AgentCommands),
 }
 
 #[derive(Subcommand)]
@@ -286,6 +289,46 @@ pub enum SkillsCommands {
     Show,
 }
 
+#[derive(Subcommand)]
+pub enum AgentCommands {
+    /// Report system status: login, profile, cache, data freshness (JSON)
+    Doctor,
+    /// Auto-setup: login check, sync departments, auto-detect profile
+    Setup,
+    /// One-shot data preparation for graduation analysis or course planning
+    #[command(subcommand)]
+    Prepare(PrepareCommands),
+    /// Resolve a natural-language department name to code
+    Resolve {
+        /// Department name or keyword (e.g. "資管系", "資管", "5400B")
+        query: String,
+    },
+    /// Return agent-needed data state and next steps for a task
+    Context {
+        /// Task type: graduation, planning
+        #[arg(long)]
+        task: String,
+    },
+    /// Re-download stale or missing data
+    Refresh {
+        /// Only update data older than TTL
+        #[arg(long)]
+        stale_only: bool,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum PrepareCommands {
+    /// Prepare all data needed for graduation analysis
+    Graduation,
+    /// Prepare all data needed for next-term course planning
+    Planning {
+        /// Term code (e.g. 1151) or "auto" for next term
+        #[arg(long, default_value = "auto")]
+        term: String,
+    },
+}
+
 fn main() {
     let cli = Cli::parse();
 
@@ -316,5 +359,6 @@ async fn run_command(cli: Cli) -> anyhow::Result<()> {
         Commands::Shortlist(ref cmd) => cli::shortlist::run(cmd, &cli).await,
         Commands::Data(ref cmd) => cli::data::run(cmd, &cli).await,
         Commands::Skills(ref cmd) => cli::skills::run(cmd, &cli).await,
+        Commands::Agent(ref cmd) => cli::agent::run(cmd, &cli).await,
     }
 }
