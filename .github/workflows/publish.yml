@@ -1,0 +1,191 @@
+name: Publish
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  test:
+    name: Test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - run: cargo test --locked
+      - run: cargo clippy -- -D warnings
+
+  build-and-publish-platform:
+    name: ${{ matrix.node_pkg }}
+    runs-on: ${{ matrix.os }}
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            node_os: linux
+            node_arch: x64
+            node_pkg: courseape-linux-x64
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            node_os: linux
+            node_arch: arm64
+            node_pkg: courseape-linux-arm64
+            use_cross: true
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            node_os: darwin
+            node_arch: x64
+            node_pkg: courseape-darwin-x64
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            node_os: darwin
+            node_arch: arm64
+            node_pkg: courseape-darwin-arm64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            node_os: win32
+            node_arch: x64
+            node_pkg: courseape-win32-x64
+          - os: windows-latest
+            target: aarch64-pc-windows-msvc
+            node_os: win32
+            node_arch: arm64
+            node_pkg: courseape-win32-arm64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get version from release tag
+        id: version
+        shell: bash
+        run: echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install cross (for ARM Linux)
+        if: matrix.use_cross
+        run: cargo install cross
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build (cross)
+        if: matrix.use_cross
+        run: cross build --release --locked --target ${{ matrix.target }}
+
+      - name: Build (cargo)
+        if: ${{ !matrix.use_cross }}
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Prepare platform package
+        shell: bash
+        env:
+          node_pkg: ${{ matrix.node_pkg }}
+          node_version: ${{ steps.version.outputs.version }}
+          node_os: ${{ matrix.node_os }}
+          node_arch: ${{ matrix.node_arch }}
+          ext: ${{ matrix.node_os == 'win32' && '.exe' || '' }}
+        run: |
+          mkdir -p "npm/${{ matrix.node_pkg }}/bin"
+          envsubst < npm/package.json.tmpl > "npm/${{ matrix.node_pkg }}/package.json"
+          cp README.md "npm/${{ matrix.node_pkg }}/README.md"
+          cp LICENSE "npm/${{ matrix.node_pkg }}/LICENSE"
+          if [[ "${{ matrix.node_os }}" == "win32" ]]; then
+            cp "target/${{ matrix.target }}/release/courseape.exe" "npm/${{ matrix.node_pkg }}/bin/courseape.exe"
+          else
+            cp "target/${{ matrix.target }}/release/courseape" "npm/${{ matrix.node_pkg }}/bin/courseape"
+            chmod +x "npm/${{ matrix.node_pkg }}/bin/courseape"
+          fi
+
+      - name: Publish platform package to npm
+        working-directory: npm/${{ matrix.node_pkg }}
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Prepare binary for release
+        shell: bash
+        run: |
+          mkdir -p release
+          if [[ "${{ matrix.node_os }}" == "win32" ]]; then
+            cp "target/${{ matrix.target }}/release/courseape.exe" "release/courseape-${{ matrix.node_os }}-${{ matrix.node_arch }}.exe"
+            cd release && sha256sum "courseape-${{ matrix.node_os }}-${{ matrix.node_arch }}.exe" > "courseape-${{ matrix.node_os }}-${{ matrix.node_arch }}.exe.sha256" && cd ..
+          else
+            cp "target/${{ matrix.target }}/release/courseape" "release/courseape-${{ matrix.node_os }}-${{ matrix.node_arch }}"
+            chmod +x "release/courseape-${{ matrix.node_os }}-${{ matrix.node_arch }}"
+            cd release && sha256sum "courseape-${{ matrix.node_os }}-${{ matrix.node_arch }}" > "courseape-${{ matrix.node_os }}-${{ matrix.node_arch }}.sha256" && cd ..
+          fi
+
+      - name: Upload binary to release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
+
+  publish-base:
+    name: Publish base npm package
+    runs-on: ubuntu-latest
+    needs: build-and-publish-platform
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get version from release tag
+        id: version
+        shell: bash
+        run: echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Update version in package.json
+        working-directory: npm/app
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/g" package.json
+          sed -i "s/\"@dyliu0306\/courseape-\(.*\)\": \".*\"/\"@dyliu0306\/courseape-\1\": \"$VERSION\"/g" package.json
+          cp ../../README.md README.md
+          cp ../../LICENSE LICENSE
+
+      - name: Install dependencies & build
+        working-directory: npm/app
+        run: |
+          npm install
+          npm run build
+
+      - name: Publish to npm
+        working-directory: npm/app
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

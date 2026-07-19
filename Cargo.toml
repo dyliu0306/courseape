@@ -1,0 +1,37 @@
+[package]
+name = "courseape"
+version = "0.1.0"
+edition = "2021"
+description = "CYCU course-planning CLI: graduation analysis, course browsing, conflict detection"
+license = "PolyForm-Noncommercial-1.0.0"
+publish = false
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "time"] }
+reqwest = { version = "0.12", features = ["json", "cookies", "rustls-tls"], default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+anyhow = "1"
+thiserror = "2"
+chrono = { version = "0.4", features = ["serde"] }
+dirs = "5"
+keyring = "4"
+rpassword = "7"
+rprompt = "2"
+zeroize = "1"
+sha2 = "0.10"
+hex = "0.4"
+rusqlite = { version = "0.32", features = ["bundled"] }
+comfy-table = "7"
+scraper = "0.22"
+regex = "1"
+url = "2"
+encoding_rs = "0.8"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

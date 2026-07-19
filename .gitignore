@@ -1,0 +1,38 @@
+# Environment & auth
+.env
+.auth/
+.env.*
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Agent directories
+.claude/
+.agents/
+.opencode/
+.codex/
+
+# Rust
+/target
+
+# npm wrapper build output
+/npm/app/dist/
+/npm/app/node_modules/
+
+# Generated npm platform packages
+/npm/courseape-*/
+
+# Local data
+*.db
+snapshots/

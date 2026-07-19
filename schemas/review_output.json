@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ReviewOutput",
+  "description": "Output schema for courseape review course",
+  "type": "object",
+  "required": ["schema_version", "course_code", "sources"],
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0.0" },
+    "course_code": { "type": "string" },
+    "course_name": { "type": "string" },
+    "teacher": { "type": "string" },
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["source_url", "source_name", "summary"],
+        "properties": {
+          "source_url": { "type": "string", "format": "uri" },
+          "source_name": { "type": "string" },
+          "published_date": { "type": ["string", "null"] },
+          "query_date": { "type": "string", "format": "date" },
+          "summary": { "type": "string" },
+          "sentiment": { "type": "string", "enum": ["positive", "negative", "neutral", "mixed"] }
+        }
+      }
+    },
+    "overall_note": { "type": "string" },
+    "data_sufficiency": { "type": "string", "enum": ["sufficient", "limited", "insufficient"] }
+  }
+}

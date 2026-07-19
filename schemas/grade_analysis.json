@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GradeAnalysis",
+  "description": "Input schema for courseape data import --scope grades",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["name", "credits", "status"],
+    "properties": {
+      "code": { "type": "string", "default": "" },
+      "name": { "type": "string" },
+      "credits": { "type": "integer", "minimum": 0 },
+      "status": {
+        "type": "string",
+        "enum": ["及格", "不及格", "停修"]
+      },
+      "term": { "type": "string" },
+      "score": { "type": ["integer", "null"] },
+      "category": { "type": "string", "default": "" }
+    }
+  }
+}

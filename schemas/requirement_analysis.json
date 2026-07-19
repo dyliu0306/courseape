@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RequirementAnalysis",
+  "description": "Output schema for courseape analyze requirements",
+  "type": "object",
+  "required": ["schema_version", "items"],
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0.0" },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["category", "source_page", "confidence"],
+        "properties": {
+          "category": { "type": "string" },
+          "required_courses": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": { "type": "string" },
+                "name": { "type": "string" },
+                "credits": { "type": "number" }
+              }
+            }
+          },
+          "required_credits": { "type": "number" },
+          "special_rules": { "type": "string" },
+          "source_page": { "type": "integer" },
+          "source_section": { "type": "string" },
+          "confidence": {
+            "type": "string",
+            "enum": ["high", "medium", "low", "needs_review"]
+          }
+        }
+      }
+    }
+  }
+}

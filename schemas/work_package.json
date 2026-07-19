@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CourseApeWorkPackage",
+  "description": "Input schema for CourseApe Skill analysis workflows",
+  "type": "object",
+  "required": ["package_type", "schema_version", "generated_at"],
+  "properties": {
+    "package_type": {
+      "type": "string",
+      "enum": ["requirements", "grades", "course_review"]
+    },
+    "schema_version": {
+      "type": "string",
+      "const": "1.0.0"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "redacted": {
+      "type": "boolean"
+    },
+    "data": {
+      "type": "object"
+    }
+  }
+}

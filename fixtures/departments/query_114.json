@@ -1,0 +1,6 @@
+[
+  {"DEPT_CODE": "001", "DEPT_NAME": "中國文學系"},
+  {"DEPT_CODE": "002", "DEPT_NAME": "英國語文學系"},
+  {"DEPT_CODE": "127", "DEPT_NAME": "資訊管理學系"},
+  {"DEPT_CODE": "999", "DEPT_NAME": "測試空學系"}
+]
