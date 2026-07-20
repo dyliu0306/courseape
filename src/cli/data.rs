@@ -26,8 +26,11 @@ pub async fn run(cmd: &DataCommands, cli: &Cli) -> anyhow::Result<()> {
                     // Export analyzed grades from DB
                     let grades = repo.list_analyzed_grades()?;
                     if grades.is_empty() {
-                        eprintln!("No analyzed grades found. Run `sync grades` then ask Agent to analyze.");
-                        eprintln!("Or import directly: courseape data import --scope grades --file <path>");
+                        eprintln!("No analyzed grades found.");
+                        eprintln!("Steps to import grades:");
+                        eprintln!("  1. courseape sync grades          # 下載成績 HTML");
+                        eprintln!("  2. 在 AI Agent 中說「分析我的成績」  # Agent 解析 HTML 後匯入");
+                        eprintln!("  3. courseape data import --scope grades --file <path.json>  # 或手動匯入");
                     } else {
                         println!("{}", serde_json::to_string_pretty(&grades)?);
                     }
@@ -74,6 +77,9 @@ pub async fn run(cmd: &DataCommands, cli: &Cli) -> anyhow::Result<()> {
                         "Exported {} offerings from all terms (for category lookup).",
                         all_offerings.len()
                     );
+                    if all_offerings.is_empty() {
+                        eprintln!("提示：執行 courseape agent prepare graduation 同步歷史開課資料。");
+                    }
                     println!("{}", serde_json::to_string_pretty(&all_offerings)?);
                 }
                 "schedule" => {

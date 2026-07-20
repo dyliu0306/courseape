@@ -41,6 +41,14 @@ pub fn offerings_table(offerings: &[CourseOffering]) -> String {
         } else {
             format!("{} [{}]", o.name, tags)
         };
+        let remaining = match o.remaining {
+            Some(r) if r >= 0 => r.to_string(),
+            _ => "?".to_string(),
+        };
+        let max = match o.max_capacity {
+            Some(m) if m >= 0 => m.to_string(),
+            _ => "?".to_string(),
+        };
         table.add_row(vec![
             &o.code,
             &name,
@@ -49,11 +57,7 @@ pub fn offerings_table(offerings: &[CourseOffering]) -> String {
             &o.dept_code,
             &o.div,
             &o.time_slots.join(", "),
-            &format!(
-                "{}/{}",
-                o.remaining.unwrap_or(-1),
-                o.max_capacity.unwrap_or(-1)
-            ),
+            &format!("{}/{}", remaining, max),
             &o.language,
         ]);
     }

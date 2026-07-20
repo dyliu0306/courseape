@@ -24,7 +24,13 @@ pub async fn run_login(_cli: &Cli) -> anyhow::Result<()> {
                 eprintln!("Using credentials from environment variables.");
                 StoredCredentials::new(id, pass)?
             } else {
-                eprintln!("No stored credentials found. Enter your CYCU credentials:");
+                eprintln!("No stored credentials found.");
+                eprintln!(
+                    "Please set credentials first: courseape credentials set"
+                );
+                eprintln!("Or set environment variables: CYCU_USERNAME and CYCU_PASSWORD");
+                eprintln!();
+                eprintln!("Enter your CYCU credentials to continue:");
                 let id = rprompt::prompt_reply("Student ID: ")?;
                 let pass = rpassword::prompt_password("Password: ")?;
                 StoredCredentials::new(id, pass)?

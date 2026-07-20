@@ -6,6 +6,13 @@ use chrono::Datelike;
 
 const DAYS: [&str; 7] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
+/// Print a one-line time-code legend to stderr.
+fn print_time_code_legend() {
+    eprintln!(
+        "時間碼說明：星期-節次（1=週一,2=週二,...,7=週日；A=第0節,1=第1節,2=第2節,...,B=第5節,...,G=第15節）"
+    );
+}
+
 pub async fn run(cmd: &CoursesCommands, cli: &Cli) -> anyhow::Result<()> {
     let db = storage::db::open()?;
     let repo = storage::repo::Repository::new(&db);
@@ -45,6 +52,7 @@ pub async fn run(cmd: &CoursesCommands, cli: &Cli) -> anyhow::Result<()> {
                 return Ok(());
             }
             eprintln!("{} offerings cached for term {}.", offerings.len(), term);
+            print_time_code_legend();
             let sections = crate::storage::repo::merge_offering_rows(&offerings);
             let display: Vec<_> = sections.iter().take(20).cloned().collect();
             match cli.output {
@@ -329,6 +337,14 @@ pub async fn run(cmd: &CoursesCommands, cli: &Cli) -> anyhow::Result<()> {
                     retake_matched += 1;
                     let in_shortlist = shortlist_codes.contains(&offering.code);
                     let tag = if in_shortlist { " [已加入]" } else { "" };
+                    let remaining = match offering.remaining {
+                        Some(r) if r >= 0 => r.to_string(),
+                        _ => "?".to_string(),
+                    };
+                    let max = match offering.max_capacity {
+                        Some(m) if m >= 0 => m.to_string(),
+                        _ => "?".to_string(),
+                    };
                     eprintln!(
                         "  {} ({}) -> {} {} | {}cr | slots: {} | {}/{}{}",
                         fc.name,
@@ -337,8 +353,8 @@ pub async fn run(cmd: &CoursesCommands, cli: &Cli) -> anyhow::Result<()> {
                         offering.name,
                         offering.credits,
                         offering.time_slots.join(", "),
-                        offering.remaining.unwrap_or(-1),
-                        offering.max_capacity.unwrap_or(-1),
+                        remaining,
+                        max,
                         tag
                     );
 

@@ -22,13 +22,9 @@ metadata:
 
 ## PREREQUISITE
 
-PDF Skill 必須已安裝。檢查方式：
-```bash
-courseape skills show
-```
-
-如果沒有 PDF Skill：
-> "CourseApe 需要 PDF 閱讀 Skill 才能分析修業辦法。請先安裝。"
+PDF Skill 必須已安裝。確認方式：
+在 Agent 的 skill 目錄中搜尋含 PDF 閱讀功能的 Skill（如 `pdf`、`docx` 等）。
+若未找到，CourseApe 的 `skills install` 會自動檢查並提示。
 
 ---
 
@@ -75,6 +71,28 @@ courseape agent doctor
 - `current_term` — 當前學期代碼
 - `next_term` — 下學期代碼
 
+### 使用 `agent context` 獲取下一步動作
+
+對於特定任務，`context` 會回傳目前缺少的資料和建議的下一步：
+
+```bash
+courseape agent context --task graduation
+courseape agent context --task planning
+```
+
+回傳 JSON 包含 `actions` 陣列，每項含 `type`（run/login/dependency）和對應參數。
+Agent 可直接依序執行 `actions` 中的 `run` 命令來自動補齊。
+
+### 使用 `agent refresh` 更新過期資料
+
+資料過期時（TTL 4 小時），執行 refresh 重刷：
+
+```bash
+courseape agent refresh --stale-only
+```
+
+`--stale-only` 只更新超過 TTL 的資料（系所 24h、成績 6h、開課 6h）。不加 flag 則強制全部重新下載。
+
 ---
 
 ## 自動補齊流程
@@ -82,7 +100,7 @@ courseape agent doctor
 ### 未登入
 
 告知使用者：
-> "CourseApe 尚未登入。請執行 `courseape login`，輸入你的 iTouch 帳密。"
+> "CourseApe 尚未登入。請先設定帳密：`courseape credentials set`，再執行 `courseape login`。"
 
 等待登入完成後重新 `doctor`。
 
@@ -135,7 +153,7 @@ courseape agent prepare planning
 
 **流程**：
 1. `courseape agent doctor` — 檢查現狀
-2. 如果未登入 → 告知使用者執行 `courseape login`
+2. 如果未登入 → 告知使用者執行 `courseape credentials set` 設定帳密，再執行 `courseape login`
 3. 詢問使用者系所名稱
 4. `courseape agent setup --department "<系所名稱>"` — 推導並寫入完整 profile
 5. 告知使用者設定完成

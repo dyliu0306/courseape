@@ -23,10 +23,29 @@ courseape --version
 ```
 
 > 需要 [Node.js](https://nodejs.org/) v18+。安裝時一路按「下一步」即可。
+>
+> **Windows 用戶**：安裝時可能觸發 Windows Defender SmartScreen，選「仍要執行」即可。
 
 如果 npm 不可用，也可以從 [GitHub Releases](https://github.com/dyliu0306/courseape/releases) 下載對應平台的 binary。Windows x64 使用 `courseape-win32-x64.exe`。
 
-### 2. 安裝 Agent Skill
+### 2. 設定帳密
+
+首次使用前，設定 iTouch 帳密（二擇一）：
+
+```
+courseape credentials set          # 互動式輸入，存入系統鑰匙圈
+```
+
+或設定環境變數：
+
+```
+$env:CYCU_USERNAME = "你的學號"
+$env:CYCU_PASSWORD = "你的密碼"
+```
+
+> 帳密存在系統鑰匙圈（Windows 認證管理員 / Mac 鑰匙圈），不出現在任何檔案。
+
+### 3. 安裝 Agent Skill
 
 CLI 安裝完成後，在你的 AI Agent 環境中執行：
 
@@ -110,11 +129,13 @@ courseape agent prepare planning
 
 | 問題 | 解法 |
 |------|------|
+| 首次登入報錯 | 先執行 `courseape credentials set` 設定帳密 |
 | 登入失敗 | `courseape credentials set` 重新設定帳密，或設定環境變數 `CYCU_USERNAME` / `CYCU_PASSWORD` |
 | Session 過期 | `courseape login` 重新登入 |
 | 系所找不到 | `courseape agent resolve "你的系所"` 查看候選清單 |
 | 開課資料過舊 | `courseape courses offerings --term 1151` 重新同步 |
 | PDF 驗證失敗 | `courseape data purge` 清除快取後重跑 `prepare graduation` |
+| Skill 安裝後 Agent 找不到 | 確認 `courseape skills install <平台>` 的平台名稱正確 |
 | 版本不一致 | `npm install -g @dyliu0306/courseape@latest` 重新安裝 |
 
 ## 授權
@@ -123,10 +144,10 @@ courseape agent prepare planning
 
 ## 進階使用
 
-- [CLI 完整參考](https://github.com/dyliu0306/courseape/blob/main/docs/cli-reference.md) — 所有低階命令與篩選條件
-- [Agent 指南](https://github.com/dyliu0306/courseape/blob/main/docs/agent-guide.md) — Agent 支援範圍與故障排除
-- [隱私政策](https://github.com/dyliu0306/courseape/blob/main/docs/privacy.md) — 帳密、session、成績與 Agent 資料邊界
-- [開發指南](https://github.com/dyliu0306/courseape/blob/main/CONTRIBUTING.md) — 建置、測試、發布流程
+- [CLI 完整參考](https://github.com/dyliu0306/courseape/blob/master/docs/cli-reference.md) — 所有低階命令與篩選條件
+- [Agent 指南](https://github.com/dyliu0306/courseape/blob/master/docs/agent-guide.md) — Agent 支援範圍與故障排除
+- [隱私政策](https://github.com/dyliu0306/courseape/blob/master/docs/privacy.md) — 帳密、session、成績與 Agent 資料邊界
+- [開發指南](https://github.com/dyliu0306/courseape/blob/master/CONTRIBUTING.md) — 建置、測試、發布流程
 
 ## 更新
 

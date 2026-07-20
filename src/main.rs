@@ -260,6 +260,11 @@ pub enum ShortlistCommands {
         #[arg(long)]
         term: String,
     },
+    /// Alias for list
+    Show {
+        #[arg(long)]
+        term: String,
+    },
 }
 
 #[derive(Subcommand)]

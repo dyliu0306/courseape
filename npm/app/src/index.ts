@@ -34,9 +34,24 @@ function getExePath(): string {
   }
 }
 
+// Suppress ANSI color output from child process to avoid PowerShell red-text issue (P1-8)
+const env = { ...process.env, NO_COLOR: "1", FORCE_COLOR: "0" };
+
 const result = spawnSync(getExePath(), process.argv.slice(2), {
-  stdio: "inherit",
+  stdio: ["inherit", "inherit", "pipe"],
+  env,
+  encoding: "utf-8",
+  // On Windows, ensure UTF-8 encoding for child process
+  ...(process.platform === "win32" ? { shell: false } : {}),
 });
+
+// Write captured stderr (strip ANSI codes) to stderr
+if (result.stderr) {
+  const clean = result.stderr.replace(/\x1b\[[0-9;]*m/g, "");
+  if (clean.length > 0) {
+    process.stderr.write(clean);
+  }
+}
 
 if (result.error) {
   console.error(result.error.message);

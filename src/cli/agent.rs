@@ -254,14 +254,16 @@ async fn run_setup(cli: &Cli, department_query: Option<&str>) -> anyhow::Result<
         };
         repo.upsert_profile(&profile)?;
         eprintln!("  ✓ 自動設定入學年度: {:?}", enroll_year);
-        eprintln!("  ⚠ 系所尚未設定。Agent 可從自然語言推導。");
+        if current_profile.as_ref().is_none_or(|p| p.dept_code.is_none()) {
+            eprintln!("  ⚠ 系所尚未設定。執行 courseape agent setup --department \"你的系所\"");
+        }
         steps_completed.push("profile_partial");
     } else {
         eprintln!("  ✓ 已有個人資料");
         steps_completed.push("profile_ok");
     }
 
-    // Step 4: Sync departments
+    // Step 4: Sync departments + resolve department
     eprintln!("[4/4] 同步系所清單...");
     let dept_year = enroll_year.unwrap_or(115);
     let depts = repo.list_departments(dept_year)?;
@@ -286,6 +288,7 @@ async fn run_setup(cli: &Cli, department_query: Option<&str>) -> anyhow::Result<
     }
     steps_completed.push("departments_ok");
 
+    // Resolve department from --department flag
     if let Some(query) = department_query {
         let departments = repo.list_departments(dept_year)?;
         let candidates = resolver::resolve_department(query, &departments);

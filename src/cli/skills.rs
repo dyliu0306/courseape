@@ -8,7 +8,7 @@ struct Platform {
     path: std::path::PathBuf,
 }
 
-fn platforms() -> Vec<(&'static str, Platform)> {
+fn builtin_platforms() -> Vec<(&'static str, Platform)> {
     let home = dirs::home_dir().unwrap_or_default();
     vec![
         (
@@ -42,6 +42,9 @@ fn check_pdf_skill(platform_path: &std::path::Path) -> bool {
     // Scan for any skill directory containing SKILL.md whose description mentions PDF
     if let Ok(entries) = std::fs::read_dir(platform_path) {
         for entry in entries.flatten() {
+            if entry.path().file_name().is_some_and(|n| n == SKILL_NAME) {
+                continue; // skip our own skill
+            }
             let skill_md = entry.path().join("SKILL.md");
             if skill_md.exists() {
                 if let Ok(content) = std::fs::read_to_string(&skill_md) {
@@ -60,24 +63,49 @@ fn check_pdf_skill(platform_path: &std::path::Path) -> bool {
     false
 }
 
+/// Detect additional agent skill directories that aren't in builtin_platforms.
+fn detect_extra_platforms() -> Vec<Platform> {
+    let home = dirs::home_dir().unwrap_or_default();
+    let builtin_paths: Vec<_> = builtin_platforms().into_iter().map(|(_, p)| p.path).collect();
+    let candidates = [
+        home.join(".agents").join("skills"),
+        home.join(".config").join("opencode").join("skills"),
+    ];
+    let mut extra = Vec::new();
+    for path in candidates {
+        if builtin_paths.contains(&path) {
+            continue;
+        }
+        if path.parent().is_some_and(|p| p.exists()) {
+            let name: &'static str = match path.to_str() {
+                Some(s) if s.contains(".agents") => "agents",
+                _ => "extra",
+            };
+            extra.push(Platform { name, path });
+        }
+    }
+    extra
+}
+
 pub async fn run(cmd: &SkillsCommands, _cli: &Cli) -> anyhow::Result<()> {
     match cmd {
         SkillsCommands::Install { platform, all } => {
             let mut targets: Vec<Platform> = Vec::new();
 
             if *all {
-                for (_, plat) in platforms() {
+                for (_, plat) in builtin_platforms() {
                     if plat.path.parent().is_some_and(|p| p.exists()) {
                         targets.push(plat);
                     }
                 }
+                targets.extend(detect_extra_platforms());
                 if targets.is_empty() {
                     eprintln!("No supported agents detected. Supported: claude, codex, opencode");
                     return Ok(());
                 }
             } else if let Some(ref p) = platform {
                 let key = p.to_lowercase();
-                let found = platforms()
+                let found = builtin_platforms()
                     .into_iter()
                     .find(|(k, _)| *k == key.as_str())
                     .map(|(_, plat)| plat);
@@ -94,6 +122,25 @@ pub async fn run(cmd: &SkillsCommands, _cli: &Cli) -> anyhow::Result<()> {
                 );
             }
 
+            let schemas: Vec<(&str, &[u8])> = vec![
+                (
+                    "grade_analysis.json",
+                    include_bytes!("../../schemas/grade_analysis.json").as_slice(),
+                ),
+                (
+                    "requirement_analysis.json",
+                    include_bytes!("../../schemas/requirement_analysis.json").as_slice(),
+                ),
+                (
+                    "review_output.json",
+                    include_bytes!("../../schemas/review_output.json").as_slice(),
+                ),
+                (
+                    "work_package.json",
+                    include_bytes!("../../schemas/work_package.json").as_slice(),
+                ),
+            ];
+
             for plat in &targets {
                 // Check PDF Skill prerequisite
                 if !check_pdf_skill(&plat.path) {
@@ -103,14 +150,18 @@ pub async fn run(cmd: &SkillsCommands, _cli: &Cli) -> anyhow::Result<()> {
                     );
                     eprintln!();
                     eprintln!("Install a PDF Skill first, then retry:");
-                    eprintln!("  npx skills add <pdf-skill-package>");
-                    eprintln!("  # or install manually to: {}", plat.path.display());
+                    eprintln!("  courseape skills install {}", plat.name);
                     anyhow::bail!("PDF Skill prerequisite not met");
                 }
 
                 let dest_dir = plat.path.join(SKILL_NAME);
                 tokio::fs::create_dir_all(&dest_dir).await?;
                 tokio::fs::write(dest_dir.join("SKILL.md"), BUNDLED_SKILL).await?;
+                let schemas_dir = dest_dir.join("schemas");
+                tokio::fs::create_dir_all(&schemas_dir).await?;
+                for (name, content) in &schemas {
+                    tokio::fs::write(schemas_dir.join(name), *content).await?;
+                }
                 eprintln!("  {} installed to {}", SKILL_NAME, plat.name);
             }
 

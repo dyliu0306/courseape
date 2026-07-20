@@ -66,5 +66,34 @@ pub async fn run(cmd: &ShortlistCommands, _cli: &Cli) -> anyhow::Result<()> {
             eprintln!("Shortlist cleared for term {}.", term);
             Ok(())
         }
+        ShortlistCommands::Show { term } => {
+            // Alias for List
+            let codes = repo.list_shortlist(term)?;
+            if codes.is_empty() {
+                eprintln!("Shortlist is empty for term {}.", term);
+                return Ok(());
+            }
+            eprintln!("Shortlist (term {}): {} courses", term, codes.len());
+            let planned = repo.get_planned_courses(term)?;
+            for o in &planned {
+                if codes.contains(&o.code) {
+                    println!(
+                        "  {} | {} | {} | {}cr | slots: {}",
+                        o.code,
+                        o.name,
+                        o.teacher,
+                        o.credits,
+                        o.time_slots.join(", ")
+                    );
+                }
+            }
+            for code in codes
+                .iter()
+                .filter(|code| !planned.iter().any(|o| &o.code == *code))
+            {
+                println!("  {} | (not in cached offerings)", code);
+            }
+            Ok(())
+        }
     }
 }
