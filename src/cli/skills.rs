@@ -35,35 +35,6 @@ fn builtin_platforms() -> Vec<(&'static str, Platform)> {
     ]
 }
 
-fn check_pdf_skill(platform_path: &std::path::Path) -> bool {
-    if !platform_path.exists() {
-        return false;
-    }
-    // Scan for any skill directory containing SKILL.md whose description mentions PDF
-    if let Ok(entries) = std::fs::read_dir(platform_path) {
-        for entry in entries.flatten() {
-            if entry.path().file_name().is_some_and(|n| n == SKILL_NAME) {
-                continue; // skip our own skill
-            }
-            let skill_md = entry.path().join("SKILL.md");
-            if skill_md.exists() {
-                if let Ok(content) = std::fs::read_to_string(&skill_md) {
-                    let lower = content.to_lowercase();
-                    if lower.contains("pdf")
-                        && (lower.contains("read")
-                            || lower.contains("parse")
-                            || lower.contains("extract"))
-                    {
-                        return true;
-                    }
-                }
-            }
-        }
-    }
-    false
-}
-
-/// Detect additional agent skill directories that aren't in builtin_platforms.
 fn detect_extra_platforms() -> Vec<Platform> {
     let home = dirs::home_dir().unwrap_or_default();
     let builtin_paths: Vec<_> = builtin_platforms().into_iter().map(|(_, p)| p.path).collect();
@@ -142,18 +113,6 @@ pub async fn run(cmd: &SkillsCommands, _cli: &Cli) -> anyhow::Result<()> {
             ];
 
             for plat in &targets {
-                // Check PDF Skill prerequisite
-                if !check_pdf_skill(&plat.path) {
-                    eprintln!("ERROR: PDF Skill not found in {}.", plat.name);
-                    eprintln!(
-                        "CourseApe requires a PDF reading/parsing Skill to be installed first."
-                    );
-                    eprintln!();
-                    eprintln!("Install a PDF Skill first, then retry:");
-                    eprintln!("  courseape skills install {}", plat.name);
-                    anyhow::bail!("PDF Skill prerequisite not met");
-                }
-
                 let dest_dir = plat.path.join(SKILL_NAME);
                 tokio::fs::create_dir_all(&dest_dir).await?;
                 tokio::fs::write(dest_dir.join("SKILL.md"), BUNDLED_SKILL).await?;
