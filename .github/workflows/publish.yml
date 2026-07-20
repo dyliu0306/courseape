@@ -3,6 +3,12 @@ name: Publish
 on:
   push:
     tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Existing release version to retry
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -13,6 +19,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref }}
       - uses: dtolnay/rust-toolchain@stable
       - uses: actions/setup-node@v4
         with:
@@ -21,7 +29,9 @@ jobs:
           cache-dependency-path: npm/app/package-lock.json
       - name: Verify version invariant
         shell: bash
-        run: node scripts/verify-version.mjs "${GITHUB_REF_NAME#v}"
+        run: |
+          VERSION='${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}'
+          node scripts/verify-version.mjs "${VERSION#v}"
       - name: Verify Rust
         run: |
           cargo test --locked
@@ -49,6 +59,8 @@ jobs:
           - { os: windows-latest, target: aarch64-pc-windows-msvc, node_os: win32, node_arch: arm64, node_pkg: courseape-win32-arm64 }
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref }}
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
@@ -65,20 +77,24 @@ jobs:
         if: matrix.smoke
         shell: bash
         run: |
+          VERSION='${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}'
+          VERSION="${VERSION#v}"
           EXT=''
           [[ '${{ matrix.node_os }}' == 'win32' ]] && EXT='.exe'
-          "target/${{ matrix.target }}/release/courseape${EXT}" --version | grep "${GITHUB_REF_NAME#v}"
+          "target/${{ matrix.target }}/release/courseape${EXT}" --version | grep "$VERSION"
       - name: Prepare package and release files
         shell: bash
         run: |
+          VERSION='${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}'
+          VERSION="${VERSION#v}"
           EXT=''
           [[ '${{ matrix.node_os }}' == 'win32' ]] && EXT='.exe'
           BINARY="target/${{ matrix.target }}/release/courseape${EXT}"
           PACKAGE="npm/${{ matrix.node_pkg }}"
           mkdir -p out/packages out/release
-          node scripts/package-platform.mjs "${GITHUB_REF_NAME#v}" '${{ matrix.node_os }}' '${{ matrix.node_arch }}' "$BINARY" "$PACKAGE"
+          node scripts/package-platform.mjs "$VERSION" '${{ matrix.node_os }}' '${{ matrix.node_arch }}' "$BINARY" "$PACKAGE"
           [[ '${{ matrix.node_os }}' == 'win32' ]] || chmod +x "$PACKAGE/bin/courseape"
-          npm pack "$PACKAGE" --pack-destination out/packages
+          npm pack "./$PACKAGE" --pack-destination out/packages
           RELEASE="courseape-${{ matrix.node_os }}-${{ matrix.node_arch }}${EXT}"
           cp "$BINARY" "out/release/${RELEASE}"
           (
@@ -100,6 +116,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: '20.x'
@@ -134,11 +152,12 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION='${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}'
+          VERSION="${VERSION#v}"
           for PLATFORM in win32-x64 win32-arm64 linux-x64 linux-arm64 darwin-x64 darwin-arm64; do
             mapfile -t PACKAGES < <(find dist/packages -type f -name "*courseape-${PLATFORM}-${VERSION}.tgz")
             [[ ${#PACKAGES[@]} -eq 1 ]] || { echo "Expected one ${PLATFORM} package, found ${#PACKAGES[@]}" >&2; exit 1; }
-            PKG="${PACKAGES[0]}"
+            PKG="./${PACKAGES[0]#./}"
             if npm view "@dyliu0306/courseape-${PLATFORM}@${VERSION}" version >/dev/null 2>&1; then
               echo "@dyliu0306/courseape-${PLATFORM}@${VERSION} already published; skipping"
             else
@@ -147,7 +166,7 @@ jobs:
           done
           mapfile -t BASE_PACKAGES < <(find dist/packages -type f -name "dyliu0306-courseape-${VERSION}.tgz")
           [[ ${#BASE_PACKAGES[@]} -eq 1 ]] || { echo "Expected one base package, found ${#BASE_PACKAGES[@]}" >&2; exit 1; }
-          BASE="${BASE_PACKAGES[0]}"
+          BASE="./${BASE_PACKAGES[0]#./}"
           if npm view "@dyliu0306/courseape@${VERSION}" version >/dev/null 2>&1; then
             echo "@dyliu0306/courseape@${VERSION} already published; skipping"
           else
@@ -156,5 +175,6 @@ jobs:
           npm view "@dyliu0306/courseape@${VERSION}" version
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}
           files: dist/release/*
           generate_release_notes: true
