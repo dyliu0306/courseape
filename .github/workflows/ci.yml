@@ -28,12 +28,12 @@ jobs:
           npm ci --prefix npm/app
           npm run build --prefix npm/app
           New-Item -ItemType Directory -Path smoke | Out-Null
-          node scripts/package-platform.mjs $version win32 x64 target/release/courseape.exe smoke/platform
-          npm pack smoke/platform --pack-destination smoke
-          npm pack ./npm/app --pack-destination smoke
+          node scripts/package-platform.mjs $version win32 x64 .\target\release\courseape.exe .\smoke\platform
+          npm pack .\smoke\platform --pack-destination .\smoke
+          npm pack .\npm\app --pack-destination .\smoke
           New-Item -ItemType Directory -Path smoke/prefix | Out-Null
-          npm install --prefix smoke/prefix --no-audit --no-fund "smoke/dyliu0306-courseape-$version.tgz" "smoke/dyliu0306-courseape-win32-x64-$version.tgz"
-          & smoke/prefix/node_modules/.bin/courseape.cmd --version | Select-String $version
+          npm install --prefix .\smoke\prefix --no-audit --no-fund ".\smoke\dyliu0306-courseape-$version.tgz" ".\smoke\dyliu0306-courseape-win32-x64-$version.tgz"
+          & .\smoke\prefix\node_modules\.bin\courseape.cmd --version | Select-String $version
 
   npm:
     runs-on: ubuntu-latest
