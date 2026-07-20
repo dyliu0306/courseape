@@ -172,7 +172,13 @@ jobs:
           else
             npm publish "$BASE" --access public
           fi
-          npm view "@dyliu0306/courseape@${VERSION}" version
+          for ATTEMPT in {1..12}; do
+            if npm view "@dyliu0306/courseape@${VERSION}" version; then
+              break
+            fi
+            [[ $ATTEMPT -lt 12 ]] || exit 1
+            sleep 5
+          done
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}
