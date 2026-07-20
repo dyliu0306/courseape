@@ -158,6 +158,12 @@ courseape agent prepare planning
 4. `courseape agent setup --department "<系所名稱>"` — 推導並寫入完整 profile
 5. 告知使用者設定完成
 
+**或使用一鍵初始化**（需先設定帳密）：
+```bash
+courseape init --department "資管系"
+```
+自動完成 login + setup + prepare planning。
+
 ---
 
 ## Workflow 1: 畢業門檻分析
@@ -208,28 +214,40 @@ courseape agent prepare planning
 **流程**：
 1. `courseape agent doctor` — 檢查狀態
 2. 自動補齊（含 graduation + planning）
-3. `courseape agent prepare planning` — 確認開課資料
-4. 執行自動規劃（預設只顯示候選）：
+3. 確認選課時程：
+   ```bash
+   courseape schedule show --term <next_term>
+   ```
+   若尚未匯入時程，先產生模板：
+   ```bash
+   courseape schedule template --term <next_term> > schedule.json
+   ```
+   編輯後匯入：
+   ```bash
+   courseape data import --scope schedule --file schedule.json
+   ```
+4. `courseape agent prepare planning` — 確認開課資料
+5. 執行自動規劃（預設只顯示候選）：
    ```bash
    courseape courses plan --term <next_term>
    ```
-5. 補充篩選（根據缺修課程搜尋開課）：
+6. 補充篩選（根據缺修課程搜尋開課）：
    ```bash
    courseape courses filter --term <next_term> --keyword <缺修課程名>
    ```
-6. 取得使用者確認後加入備選清單：
+7. 取得使用者確認後加入備選清單：
    ```bash
    courseape shortlist add <code> --term <next_term>
    ```
-7. 檢查衝堂：
+8. 檢查衝堂：
    ```bash
    courseape courses conflicts --term <next_term>
    ```
-8. 顯示課表：
+9. 顯示課表：
    ```bash
    courseape courses timetable --term <next_term>
    ```
-9. 如果有衝堂，建議替代時段或班級
+10. 如果有衝堂，建議替代時段或班級
 
 ---
 
@@ -337,3 +355,143 @@ courseape agent resolve "資管系"
 - `auto_select: true` → 直接使用
 - 多個候選 → 詢問使用者
 - 無匹配 → 請使用者確認系所全名
+
+---
+
+## 完整 CLI 命令參考
+
+### 帳密與登入
+
+| 命令 | 說明 |
+|------|------|
+| `courseape credentials set` | 設定/更新 iTouch 帳密（存入 OS 鑰匙圈；支援 env `CYCU_USERNAME`/`CYCU_PASSWORD`） |
+| `courseape login` | 登入 iTouch，建立 session |
+| `courseape status` | 檢查 session 是否有效 |
+| `courseape logout` | 清除 session；`--clear-credentials` 同時清除鑰匙圈 |
+
+### Profile
+
+| 命令 | 說明 |
+|------|------|
+| `courseape profile show` | 顯示學號、系所、入學年度、學制 |
+| `courseape profile edit` | 互動式編輯 profile |
+| `courseape profile set --department "資管系"` | 非互動式設定單一欄位（`--department`/`--enroll-year`/`--degree`） |
+
+### Agent 高階命令
+
+| 命令 | 說明 |
+|------|------|
+| `courseape agent doctor` | 診斷全部狀態，回傳 JSON |
+| `courseape agent setup --department "資管系"` | 自動登入、推導入學年、同步系所、寫入 profile |
+| `courseape agent prepare graduation` | 下載修業辦法 PDF + 成績 HTML + 歷史開課 |
+| `courseape agent prepare planning --term <term>` | 下載指定學期開課清單（`--term auto` = 下學期） |
+| `courseape agent resolve "資管系"` | 系所名稱 → 代碼解析 |
+| `courseape agent context --task graduation\|planning` | 回傳下一步動作列表（`actions` 陣列） |
+| `courseape agent refresh --stale-only` | 更新過期資料；不加 `--stale-only` 強制全刷 |
+
+### 一鍵初始化
+
+| 命令 | 說明 |
+|------|------|
+| `courseape init --department "資管系"` | login + setup + prepare planning 一次完成 |
+
+### 課程瀏覽與篩選
+
+| 命令 | 說明 |
+|------|------|
+| `courseape courses offerings --term <term>` | 列出開課資料（自動快取） |
+| `courseape courses filter --term <term> [選項]` | 篩選開課（見下方篩選參數） |
+| `courseape courses conflicts --term <term>` | 檢查備選清單衝堂 |
+| `courseape courses timetable --term <term>` | 顯示週課表 grid |
+| `courseape courses plan --term <term>` | 自動匹配重修課程；`--apply` 加入備選清單 |
+| `courseape courses history` | 同步入學至今所有學期開課（用於通識向度比對） |
+| `courseape courses syllabus <code> --term <term>` | 下載課程大綱 PDF |
+
+#### 篩選參數（`courses filter`）
+
+| 參數 | 說明 |
+|------|------|
+| `--code` | 課程代碼 |
+| `--keyword` | 課程名稱關鍵字 |
+| `--teacher` | 授課教師 |
+| `--teacher-id` | 人事代碼 |
+| `--dept` | 系所代碼 |
+| `--class-dept` | 班級 |
+| `--type` | 必修/選修 |
+| `--credit` | 學分數 |
+| `--div` | 部別（B=學士, M=碩士, D=博士） |
+| `--language` | 授課語言 |
+| `--day` | 上課日（1-7） |
+| `--period` | 上課時段 |
+| `--classroom` | 教室 |
+| `--general` | 通識向度（科學/科技/天/人/物/我/宗哲/人哲/公民/歷史/文學/修辭/延通） |
+| `--emi` | 只顯示全英語課程 |
+| `--english` | 只顯示 English 授課 |
+| `--distance` | 只顯示遠距教學 |
+| `--pbl` | 只顯示 PBL 課程 |
+| `--programming` | 只顯示程式設計課程 |
+| `--available` | 只顯示有餘額課程 |
+| `--semester` | 期程（全學期/半學期） |
+| `--cross` | 只顯示跨系/聯盟課程 |
+| `--sdgs` | SDGs 目標 |
+| `--no-conflict-with <term>` | 排除與 shortlist 衝突的課程 |
+
+### 備選清單（Shortlist）
+
+| 命令 | 說明 |
+|------|------|
+| `courseape shortlist add <code> --term <term>` | 加入備選清單 |
+| `courseape shortlist remove <code> --term <term>` | 從備選清單移除 |
+| `courseape shortlist list --term <term>` | 列出備選課程（`show` 為 alias） |
+| `courseape shortlist clear --term <term>` | 清空備選清單 |
+
+### 選課時程
+
+| 命令 | 說明 |
+|------|------|
+| `courseape schedule show --term <term>` | 顯示已匯入的選課時程與下一個階段 |
+| `courseape schedule template --term <term>` | 產生時程模板 JSON（stdout） |
+
+匯入時程：
+```bash
+courseape schedule template --term 1151 > schedule.json
+# 編輯 schedule.json 填入正確日期
+courseape data import --scope schedule --file schedule.json
+```
+
+### 資料匯出/匯入
+
+| 命令 | 說明 |
+|------|------|
+| `courseape data export --scope profile` | 匯出個人資料（預設遮罩） |
+| `courseape data export --scope departments` | 匯出系所清單 |
+| `courseape data export --scope grades` | 匯出已分析成績 |
+| `courseape data export --scope grade-html` | 匯出成績 HTML 元資料（含 `path`） |
+| `courseape data export --scope offerings` | 匯出全部學期開課（含 OP_TYPE） |
+| `courseape data export --scope schedule` | 匯出選課時程 |
+| `courseape data import --scope grades --file <path>` | 匯入 Agent 分析的成績 JSON |
+| `courseape data import --scope schedule --file <path>` | 匯入選課時程 JSON |
+| `courseape data purge` | 清除所有快取、session、snapshot（保留鑰匙圈） |
+
+### 同步
+
+| 命令 | 說明 |
+|------|------|
+| `courseape sync departments --year <年>` | 同步系所清單 |
+| `courseape sync requirements --year <年>` | 下載修業辦法 PDF |
+| `courseape sync grades` | 下載歷年成績 HTML |
+
+### Skills
+
+| 命令 | 說明 |
+|------|------|
+| `courseape skills install --all` | 偵測已安裝的 Agent 並安裝 Skill + schemas |
+| `courseape skills install <platform>` | 安裝到指定平台（claude/codex/opencode） |
+| `courseape skills show` | 顯示 SKILL.md 原始內容 |
+
+### 全域選項
+
+| 選項 | 說明 |
+|------|------|
+| `--output json\|csv\|table` | 輸出格式（預設 table） |
+| `--no-redact-personal` | 顯示完整個資（預設遮罩學號） |
