@@ -16,10 +16,18 @@ pub struct SnapshotArchive;
 
 impl SnapshotArchive {
     /// Save a raw snapshot to disk. Returns (hash, file_path).
+    /// Extension is detected from magic bytes, not source name.
     pub fn save(source: &str, data: &[u8]) -> anyhow::Result<(String, PathBuf)> {
-        let ext = if source.contains("pdf") {
+        let ext = if data.starts_with(b"%PDF-") {
             "pdf"
-        } else if source.contains("html") || source.contains("grade") {
+        } else if data.starts_with(b"<!DOCTYPE")
+            || data.starts_with(b"<html")
+            || data.starts_with(b"<HTML")
+            || (data.len() > 20
+                && String::from_utf8_lossy(&data[..100.min(data.len())])
+                    .to_lowercase()
+                    .contains("<html"))
+        {
             "html"
         } else {
             "json"
@@ -113,5 +121,26 @@ impl SnapshotArchive {
             }
         }
         Ok(names)
+    }
+
+    /// Remove snapshots older than the given number of days. Returns count removed.
+    #[allow(dead_code)]
+    pub fn cleanup_old(max_age_days: u64) -> anyhow::Result<usize> {
+        let dir = snapshot_dir()?;
+        if !dir.exists() {
+            return Ok(0);
+        }
+        let cutoff = std::time::SystemTime::now()
+            .checked_sub(std::time::Duration::from_secs(max_age_days * 86400))
+            .unwrap_or(std::time::UNIX_EPOCH);
+        let mut removed = 0;
+        for entry in std::fs::read_dir(&dir)? {
+            let entry = entry?;
+            if entry.metadata()?.modified().is_ok_and(|m| m < cutoff) {
+                std::fs::remove_file(entry.path())?;
+                removed += 1;
+            }
+        }
+        Ok(removed)
     }
 }

@@ -2,7 +2,7 @@
 
 > Version: 1.0.0-draft
 > Date: 2026-07-19
-> Status: Ready for user review
+> Status: Internal (may lag behind implementation; see README for current usage)
 
 ## 1. Product Overview
 

@@ -119,6 +119,17 @@ fn migrate(conn: &Connection) -> anyhow::Result<()> {
             PRIMARY KEY (code, term)
         );
 
+        CREATE TABLE IF NOT EXISTS schedule (
+            term TEXT NOT NULL,
+            phase TEXT NOT NULL,
+            category TEXT NOT NULL DEFAULT '',
+            start_time TEXT,
+            end_time TEXT,
+            description TEXT NOT NULL DEFAULT '',
+            synced_at TEXT NOT NULL,
+            PRIMARY KEY (term, phase, category)
+        );
+
         CREATE TABLE IF NOT EXISTS analyzed_grades (
             code TEXT NOT NULL DEFAULT '',
             name TEXT NOT NULL,

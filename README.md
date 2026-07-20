@@ -1,5 +1,9 @@
 # CourseApe — CYCU 選課規劃工具
 
+[![npm version](https://img.shields.io/npm/v/@dyliu0306/courseape)](https://www.npmjs.com/package/@dyliu0306/courseape)
+[![CI](https://github.com/dyliu0306/courseape/actions/workflows/ci.yml/badge.svg)](https://github.com/dyliu0306/courseape/actions/workflows/ci.yml)
+[![License: PolyForm NC 1.0.0](https://img.shields.io/badge/License-PolyForm--Noncommercial--1.0.0-blue)](LICENSE)
+
 > 給中原大學學生與 AI Agent 的選課輔助系統。用自然語言提問，Agent 幫你分析畢業門檻、規劃下學期、檢查衝堂。
 
 ## 它能做什麼？
@@ -88,9 +92,30 @@ Agent 會自動：
 ## 限制
 
 - 成績分析需要 AI Agent 讀取 PDF，準確度取決於 PDF 格式與 Agent 能力
-- 課程資料來自學校系統，非即時更新；若學期尚未發布開課資料，規劃會回報 unavailable
+- 課程資料來自學校系統，非即時更新；開課資料 TTL 4 小時、系所清單 24 小時
 - 通識向度判斷依賴歷史開課資料的 `OP_TYPE` 欄位，部分課程可能缺失
 - 本工具為非官方開源專案，與中原大學無關
+
+## 快速驗證（新手 5 命令）
+
+```bash
+courseape --version
+courseape agent doctor
+courseape init --department "資管系"
+courseape agent prepare graduation
+courseape agent prepare planning
+```
+
+## 疑難排解
+
+| 問題 | 解法 |
+|------|------|
+| 登入失敗 | `courseape credentials set` 重新設定帳密，或設定環境變數 `CYCU_USERNAME` / `CYCU_PASSWORD` |
+| Session 過期 | `courseape login` 重新登入 |
+| 系所找不到 | `courseape agent resolve "你的系所"` 查看候選清單 |
+| 開課資料過舊 | `courseape courses offerings --term 1151` 重新同步 |
+| PDF 驗證失敗 | `courseape data purge` 清除快取後重跑 `prepare graduation` |
+| 版本不一致 | `npm install -g @dyliu0306/courseape@latest` 重新安裝 |
 
 ## 授權
 

@@ -17,7 +17,9 @@ pub async fn run(cmd: &DataCommands, cli: &Cli) -> anyhow::Result<()> {
                     println!("{}", serde_json::to_string_pretty(&export)?);
                 }
                 "departments" => {
-                    let depts = repo.list_departments(114)?;
+                    let profile = repo.get_profile()?;
+                    let year = profile.as_ref().and_then(|p| p.enroll_year).unwrap_or(115);
+                    let depts = repo.list_departments(year)?;
                     println!("{}", serde_json::to_string_pretty(&depts)?);
                 }
                 "grades" => {
@@ -74,8 +76,19 @@ pub async fn run(cmd: &DataCommands, cli: &Cli) -> anyhow::Result<()> {
                     );
                     println!("{}", serde_json::to_string_pretty(&all_offerings)?);
                 }
+                "schedule" => {
+                    let terms = repo.list_offering_terms()?;
+                    let current = crate::domain::resolver::current_term_code();
+                    let target_term = terms.last().unwrap_or(&current);
+                    let schedule = repo.list_schedule(target_term)?;
+                    if schedule.is_empty() {
+                        eprintln!("No schedule found. Import with: courseape data import --scope schedule --file <path>");
+                    } else {
+                        println!("{}", serde_json::to_string_pretty(&schedule)?);
+                    }
+                }
                 _ => {
-                    anyhow::bail!("Unknown scope '{}'. Valid: profile, departments, grades, grade-html, offerings", scope);
+                    anyhow::bail!("Unknown scope '{}'. Valid: profile, departments, grades, grade-html, offerings, schedule", scope);
                 }
             }
             Ok(())
@@ -109,8 +122,40 @@ pub async fn run(cmd: &DataCommands, cli: &Cli) -> anyhow::Result<()> {
                     repo.upsert_analyzed_grades(&grades)?;
                     eprintln!("Imported {} analyzed courses into database.", count);
                 }
+                "schedule" => {
+                    let phases = crate::parsers::schedule::parse_schedule_json(&json_str)?;
+                    let term = phases
+                        .first()
+                        .map(|p| {
+                            // Try to extract term from start date (YYYY-MM-DD -> YYY1/YYY2)
+                            p.start.as_deref().unwrap_or("").get(..4).unwrap_or("115")
+                        })
+                        .unwrap_or("115");
+                    let term_code = format!("{}1", term);
+                    let tuples: Vec<_> = phases
+                        .iter()
+                        .map(|p| {
+                            (
+                                p.phase.clone(),
+                                p.category.clone(),
+                                p.start.clone(),
+                                p.end.clone(),
+                                p.description.clone(),
+                            )
+                        })
+                        .collect();
+                    repo.upsert_schedule(&term_code, &tuples)?;
+                    eprintln!(
+                        "Imported {} schedule phases for term {}.",
+                        phases.len(),
+                        term_code
+                    );
+                }
                 _ => {
-                    anyhow::bail!("Import scope '{}' not supported. Valid: grades", scope);
+                    anyhow::bail!(
+                        "Import scope '{}' not supported. Valid: grades, schedule",
+                        scope
+                    );
                 }
             }
             Ok(())

@@ -41,6 +41,15 @@ struct Cli {
 enum Commands {
     /// Login to iTouch and save session
     Login,
+    /// One-key initialization: login + setup + prepare planning
+    Init {
+        /// Department name, abbreviation, or code (required)
+        #[arg(long)]
+        department: String,
+        /// Target term for planning (default: next term)
+        #[arg(long)]
+        term: Option<String>,
+    },
     /// Check current session status
     Status,
     /// Remove saved session
@@ -66,6 +75,9 @@ enum Commands {
     /// High-level commands for Agent integration
     #[command(subcommand)]
     Agent(AgentCommands),
+    /// Show or import course selection schedule
+    #[command(subcommand)]
+    Schedule(ScheduleCommands),
 }
 
 #[derive(Subcommand)]
@@ -188,6 +200,9 @@ pub enum CoursesCommands {
         /// SDGs目標
         #[arg(long)]
         sdgs: Option<String>,
+        /// 排除與 shortlist 衝突的課程（指定學期）
+        #[arg(long)]
+        no_conflict_with: Option<String>,
     },
     /// Detect time-slot conflicts in planned courses
     Conflicts {
@@ -323,6 +338,22 @@ pub enum PrepareCommands {
     },
 }
 
+#[derive(Subcommand)]
+pub enum ScheduleCommands {
+    /// Show current schedule phases and next action
+    Show {
+        /// Term code (e.g. 1151)
+        #[arg(long)]
+        term: String,
+    },
+    /// Generate a schedule template JSON for a term
+    Template {
+        /// Term code (e.g. 1151)
+        #[arg(long)]
+        term: String,
+    },
+}
+
 fn main() {
     let cli = Cli::parse();
 
@@ -342,6 +373,10 @@ fn main() {
 async fn run_command(cli: Cli) -> anyhow::Result<()> {
     match cli.command {
         Commands::Login => cli::auth::run_login(&cli).await,
+        Commands::Init {
+            ref department,
+            ref term,
+        } => cli::init::run(&cli, department, term.as_deref()).await,
         Commands::Status => cli::auth::run_status(&cli).await,
         Commands::Logout { clear_credentials } => {
             cli::auth::run_logout(&cli, clear_credentials).await
@@ -354,5 +389,6 @@ async fn run_command(cli: Cli) -> anyhow::Result<()> {
         Commands::Data(ref cmd) => cli::data::run(cmd, &cli).await,
         Commands::Skills(ref cmd) => cli::skills::run(cmd, &cli).await,
         Commands::Agent(ref cmd) => cli::agent::run(cmd, &cli).await,
+        Commands::Schedule(ref cmd) => cli::schedule::run(cmd, &cli).await,
     }
 }

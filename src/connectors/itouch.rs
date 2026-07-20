@@ -100,7 +100,13 @@ impl ItouchConnector {
             anyhow::bail!(
                 "iTouch 登入成功但 session 驗證失敗。\n\
                  可能原因：(1) 憑證過期或帳號鎖定 (2) 學校系統維護中 (3) 網路/VPN 問題\n\
-                 嘗試：courseape credentials set 重新設定憑證，或稍後再試"
+                 嘗試：\n\
+                 1. courseape credentials set 重新設定憑證\n\
+                 2. 或設定環境變數：\n\
+                    set CYCU_USERNAME=你的學號\n\
+                    set CYCU_PASSWORD=你的密碼\n\
+                    courseape login\n\
+                 3. 確認網路連線與 VPN 狀態"
             );
         }
 

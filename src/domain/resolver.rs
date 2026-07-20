@@ -168,11 +168,12 @@ pub fn derive_enroll_year(student_id: &str) -> Option<u32> {
     }
 }
 
-/// Determine current academic term from today's date.
+/// Determine current academic term from today's date (Taiwan time UTC+8).
 /// Returns (year, semester) where year is ROC year.
 pub fn current_term() -> (u32, u32) {
     use chrono::Datelike;
-    let now = chrono::Utc::now();
+    let taiwan_offset = chrono::FixedOffset::east_opt(8 * 3600).unwrap();
+    let now = chrono::Utc::now().with_timezone(&taiwan_offset);
     let ad_year = now.year();
     let month = now.month();
 

@@ -3,9 +3,22 @@ use crate::domain::department::Department;
 use crate::domain::profile::StudentProfile;
 use rusqlite::Connection;
 
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ScheduleEntry {
+    pub term: String,
+    pub phase: String,
+    pub category: String,
+    pub start_time: Option<String>,
+    pub end_time: Option<String>,
+    pub description: String,
+}
+
 pub struct Repository<'a> {
     conn: &'a Connection,
 }
+
+/// (phase, category, start_time, end_time, description)
+pub type SchedulePhaseTuple = (String, String, Option<String>, Option<String>, String);
 
 impl<'a> Repository<'a> {
     pub fn new(conn: &'a Connection) -> Self {
@@ -292,6 +305,63 @@ impl<'a> Repository<'a> {
         self.conn
             .execute("DELETE FROM shortlist WHERE term = ?1", [term])?;
         Ok(())
+    }
+
+    // ── Schedule ───────────────────────────────────────────────
+
+    pub fn upsert_schedule(&self, term: &str, phases: &[SchedulePhaseTuple]) -> anyhow::Result<()> {
+        let now = chrono::Utc::now().to_rfc3339();
+        let mut stmt = self.conn.prepare(
+            "INSERT INTO schedule (term, phase, category, start_time, end_time, description, synced_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+             ON CONFLICT(term, phase, category) DO UPDATE SET
+               start_time=excluded.start_time, end_time=excluded.end_time,
+               description=excluded.description, synced_at=excluded.synced_at",
+        )?;
+        for (phase, category, start, end, desc) in phases {
+            stmt.execute(rusqlite::params![
+                term, phase, category, start, end, desc, &now,
+            ])?;
+        }
+        Ok(())
+    }
+
+    pub fn list_schedule(&self, term: &str) -> anyhow::Result<Vec<ScheduleEntry>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT term, phase, category, start_time, end_time, description
+             FROM schedule WHERE term = ?1 ORDER BY start_time, phase, category",
+        )?;
+        let rows = stmt.query_map([term], |row| {
+            Ok(ScheduleEntry {
+                term: row.get(0)?,
+                phase: row.get(1)?,
+                category: row.get(2)?,
+                start_time: row.get(3)?,
+                end_time: row.get(4)?,
+                description: row.get(5)?,
+            })
+        })?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
+    pub fn next_schedule_phase(&self, term: &str) -> anyhow::Result<Option<ScheduleEntry>> {
+        let now = chrono::Utc::now().to_rfc3339();
+        let mut stmt = self.conn.prepare(
+            "SELECT term, phase, category, start_time, end_time, description
+             FROM schedule WHERE term = ?1 AND end_time > ?2
+             ORDER BY start_time LIMIT 1",
+        )?;
+        let mut rows = stmt.query_map([term, &now], |row| {
+            Ok(ScheduleEntry {
+                term: row.get(0)?,
+                phase: row.get(1)?,
+                category: row.get(2)?,
+                start_time: row.get(3)?,
+                end_time: row.get(4)?,
+                description: row.get(5)?,
+            })
+        })?;
+        Ok(rows.next().transpose()?)
     }
 
     pub fn get_planned_courses(&self, term: &str) -> anyhow::Result<Vec<CourseOffering>> {

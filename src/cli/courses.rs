@@ -89,6 +89,7 @@ pub async fn run(cmd: &CoursesCommands, cli: &Cli) -> anyhow::Result<()> {
             semester,
             cross,
             sdgs,
+            no_conflict_with,
         } => {
             let offerings = repo.list_offerings(term)?;
             if offerings.is_empty() {
@@ -97,6 +98,14 @@ pub async fn run(cmd: &CoursesCommands, cli: &Cli) -> anyhow::Result<()> {
                     term, term
                 );
                 return Ok(());
+            }
+            // TTL check: warn if data is older than 4 hours
+            let snapshot_prefix = format!("offerings_{}", term);
+            if !storage::snapshot::SnapshotArchive::is_fresh(&snapshot_prefix, 4)? {
+                eprintln!(
+                    "⚠ 開課資料超過 4 小時，可能不是最新。執行 courses offerings --term {} 更新。",
+                    term
+                );
             }
             let params = analysis::filter::FilterParams {
                 code: code.clone(),
@@ -122,6 +131,7 @@ pub async fn run(cmd: &CoursesCommands, cli: &Cli) -> anyhow::Result<()> {
                 semester_half: semester.clone(),
                 cross: *cross,
                 sdgs: sdgs.clone(),
+                no_conflict_with: no_conflict_with.clone(),
             };
             let filtered_rows = analysis::filter::apply_section_filters(&offerings, &params);
             let filtered = crate::storage::repo::merge_offering_rows(&filtered_rows);

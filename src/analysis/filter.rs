@@ -1,35 +1,37 @@
 use crate::domain::course_offering::CourseOffering;
 use crate::parsers::time_slot::expand_time_slots;
+use crate::storage;
 
 #[derive(Default)]
 pub struct FilterParams {
-    pub code: Option<String>,          // 課程代碼
-    pub keyword: Option<String>,       // 課程名稱(中/英)
-    pub teacher: Option<String>,       // 授課教師
-    pub teacher_id: Option<String>,    // 人事代碼
-    pub dept: Option<String>,          // 系所代碼
-    pub class_dept: Option<String>,    // 班級
-    pub course_type: Option<String>,   // 必修/選修
-    pub credit: Option<u32>,           // 學分
-    pub div: Option<String>,           // 部別(B/M/D/H)
-    pub language: Option<String>,      // 授課語言
-    pub day: Option<u32>,              // 上課日(1-7)
-    pub period: Option<String>,        // 上課時段
-    pub classroom: Option<String>,     // 教室
-    pub general: Option<String>,       // 通識向度
-    pub emi: bool,                     // 全英語課程
-    pub english: bool,                 // English授課
-    pub distance: bool,                // 遠距教學
-    pub pbl: bool,                     // PBL課程
-    pub programming: bool,             // 程式設計課程
-    pub available_only: bool,          // 只顯示有餘額
-    pub semester_half: Option<String>, // 全學期/半學期
-    pub cross: bool,                   // 跨系/聯盟
-    pub sdgs: Option<String>,          // SDGs目標
+    pub code: Option<String>,             // 課程代碼
+    pub keyword: Option<String>,          // 課程名稱(中/英)
+    pub teacher: Option<String>,          // 授課教師
+    pub teacher_id: Option<String>,       // 人事代碼
+    pub dept: Option<String>,             // 系所代碼
+    pub class_dept: Option<String>,       // 班級
+    pub course_type: Option<String>,      // 必修/選修
+    pub credit: Option<u32>,              // 學分
+    pub div: Option<String>,              // 部別(B/M/D/H)
+    pub language: Option<String>,         // 授課語言
+    pub day: Option<u32>,                 // 上課日(1-7)
+    pub period: Option<String>,           // 上課時段
+    pub classroom: Option<String>,        // 教室
+    pub general: Option<String>,          // 通識向度
+    pub emi: bool,                        // 全英語課程
+    pub english: bool,                    // English授課
+    pub distance: bool,                   // 遠距教學
+    pub pbl: bool,                        // PBL課程
+    pub programming: bool,                // 程式設計課程
+    pub available_only: bool,             // 只顯示有餘額
+    pub semester_half: Option<String>,    // 全學期/半學期
+    pub cross: bool,                      // 跨系/聯盟
+    pub sdgs: Option<String>,             // SDGs目標
+    pub no_conflict_with: Option<String>, // 排除與 shortlist 衝突
 }
 
 pub fn apply_filters(offerings: &[CourseOffering], params: &FilterParams) -> Vec<CourseOffering> {
-    offerings
+    let mut filtered: Vec<CourseOffering> = offerings
         .iter()
         .filter(|o| {
             // 課程代碼
@@ -122,7 +124,10 @@ pub fn apply_filters(offerings: &[CourseOffering], params: &FilterParams) -> Vec
             }
             // 通識向度
             if let Some(ref gen) = params.general {
-                if !o.spec.contains(gen.as_str()) && !o.course_type.contains(gen.as_str()) {
+                if !o.spec.contains(gen.as_str())
+                    && !o.course_type.contains(gen.as_str())
+                    && !o.op_type.contains(gen.as_str())
+                {
                     return false;
                 }
             }
@@ -173,7 +178,32 @@ pub fn apply_filters(offerings: &[CourseOffering], params: &FilterParams) -> Vec
             true
         })
         .cloned()
-        .collect()
+        .collect();
+
+    // Conflict filtering: exclude courses that overlap with shortlisted courses
+    if let Some(ref conflict_term) = params.no_conflict_with {
+        if let Ok(db) = storage::db::open() {
+            let repo = storage::repo::Repository::new(&db);
+            if let Ok(planned) = repo.get_planned_courses(conflict_term) {
+                use std::collections::HashSet;
+                let planned_cells: HashSet<(u32, char)> = planned
+                    .iter()
+                    .flat_map(|o| expand_time_slots(&o.time_slots))
+                    .map(|cell| (cell.day, cell.period))
+                    .collect();
+                if !planned_cells.is_empty() {
+                    filtered.retain(|o| {
+                        let cells = expand_time_slots(&o.time_slots);
+                        !cells
+                            .iter()
+                            .any(|cell| planned_cells.contains(&(cell.day, cell.period)))
+                    });
+                }
+            }
+        }
+    }
+
+    filtered
 }
 
 pub fn apply_section_filters(

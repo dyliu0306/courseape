@@ -141,7 +141,9 @@ async fn run_doctor(_cli: &Cli) -> anyhow::Result<()> {
             "enroll_year": p.enroll_year,
             "degree": p.degree,
         })),
-        "departments_synced": !repo.list_departments(114).unwrap_or_default().is_empty(),
+        "departments_synced": !repo.list_departments(
+            profile.as_ref().and_then(|p| p.enroll_year).unwrap_or(115)
+        ).unwrap_or_default().is_empty(),
         "requirements_downloaded": has_requirements,
         "grades_downloaded": has_grades,
         "grades_analyzed": has_analyzed_grades,
@@ -261,17 +263,23 @@ async fn run_setup(cli: &Cli, department_query: Option<&str>) -> anyhow::Result<
 
     // Step 4: Sync departments
     eprintln!("[4/4] 同步系所清單...");
-    let depts = repo.list_departments(114)?;
+    let dept_year = enroll_year.unwrap_or(115);
+    let depts = repo.list_departments(dept_year)?;
     if depts.is_empty() {
         eprintln!("  正在下載...");
         let result =
-            crate::connectors::necessary_course::NecessaryCourseConnector::query_departments(114)
-                .await?;
+            crate::connectors::necessary_course::NecessaryCourseConnector::query_departments(
+                dept_year,
+            )
+            .await?;
         let json: serde_json::Value = serde_json::from_slice(&result.body_bytes)?;
-        let departments = crate::parsers::department_json::parse_departments(&json, 114)?;
+        let departments = crate::parsers::department_json::parse_departments(&json, dept_year)?;
         let count = departments.len();
         repo.upsert_departments(&departments)?;
-        let _ = storage::snapshot::SnapshotArchive::save("departments_114", &result.body_bytes);
+        let _ = storage::snapshot::SnapshotArchive::save(
+            &format!("departments_{dept_year}"),
+            &result.body_bytes,
+        );
         eprintln!("  ✓ 同步 {} 個系所", count);
     } else {
         eprintln!("  ✓ 已有 {} 個系所", depts.len());
@@ -279,7 +287,7 @@ async fn run_setup(cli: &Cli, department_query: Option<&str>) -> anyhow::Result<
     steps_completed.push("departments_ok");
 
     if let Some(query) = department_query {
-        let departments = repo.list_departments(114)?;
+        let departments = repo.list_departments(dept_year)?;
         let candidates = resolver::resolve_department(query, &departments);
         if candidates.len() != 1 {
             println!(
@@ -300,6 +308,12 @@ async fn run_setup(cli: &Cli, department_query: Option<&str>) -> anyhow::Result<
         profile.dept_name = Some(candidate.name.clone());
         repo.upsert_profile(&profile)?;
         steps_completed.push("department_ok");
+    } else {
+        anyhow::bail!(
+            "系所為必填欄位。請執行：\n\
+             courseape agent setup --department \"你的系所名稱\"\n\
+             例如：courseape agent setup --department \"資管系\""
+        );
     }
 
     // Output JSON summary
@@ -506,7 +520,13 @@ async fn prepare_planning(term_arg: &str, _cli: &Cli) -> anyhow::Result<()> {
 fn run_resolve(query: &str, _cli: &Cli) -> anyhow::Result<()> {
     let db = storage::db::open()?;
     let repo = storage::repo::Repository::new(&db);
-    let departments = repo.list_departments(114)?;
+    let dept_year = repo
+        .get_profile()
+        .ok()
+        .flatten()
+        .and_then(|p| p.enroll_year)
+        .unwrap_or(115);
+    let departments = repo.list_departments(dept_year)?;
 
     if departments.is_empty() {
         anyhow::bail!("系所清單尚未同步。請先執行 courseape sync departments --year 114");
@@ -648,23 +668,27 @@ async fn run_refresh(_cli: &Cli, stale_only: bool) -> anyhow::Result<()> {
     let _profile = repo
         .get_profile()?
         .ok_or(crate::error::CourseapeError::ProfileNotSet)?;
+    let dept_year = _profile.enroll_year.unwrap_or(115);
 
     let mut refreshed = Vec::new();
     let mut skipped = Vec::new();
 
     // Refresh departments
-    if stale_only && crate::storage::snapshot::SnapshotArchive::is_fresh("departments_114", 24)? {
+    let dept_snapshot = format!("departments_{dept_year}");
+    if stale_only && crate::storage::snapshot::SnapshotArchive::is_fresh(&dept_snapshot, 24)? {
         skipped.push(serde_json::json!({"resource":"departments","reason":"fresh"}));
     } else {
         eprintln!("更新系所清單...");
         let result =
-            crate::connectors::necessary_course::NecessaryCourseConnector::query_departments(114)
-                .await?;
+            crate::connectors::necessary_course::NecessaryCourseConnector::query_departments(
+                dept_year,
+            )
+            .await?;
         let json: serde_json::Value = serde_json::from_slice(&result.body_bytes)?;
-        let departments = crate::parsers::department_json::parse_departments(&json, 114)?;
+        let departments = crate::parsers::department_json::parse_departments(&json, dept_year)?;
         let count = departments.len();
         repo.upsert_departments(&departments)?;
-        let _ = storage::snapshot::SnapshotArchive::save("departments_114", &result.body_bytes)?;
+        let _ = storage::snapshot::SnapshotArchive::save(&dept_snapshot, &result.body_bytes)?;
         refreshed.push(format!("departments: {}", count));
     }
 
