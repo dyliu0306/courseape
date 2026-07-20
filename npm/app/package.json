@@ -1,6 +1,6 @@
 {
   "name": "@dyliu0306/courseape",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "CYCU course-planning CLI: graduation analysis, course browsing, conflict detection",
   "bin": {
     "courseape": "dist/index.js"
@@ -20,12 +20,12 @@
     "@types/node": "^20.0.0"
   },
   "optionalDependencies": {
-    "@dyliu0306/courseape-win32-x64": "1.0.0",
-    "@dyliu0306/courseape-win32-arm64": "1.0.0",
-    "@dyliu0306/courseape-linux-x64": "1.0.0",
-    "@dyliu0306/courseape-linux-arm64": "1.0.0",
-    "@dyliu0306/courseape-darwin-x64": "1.0.0",
-    "@dyliu0306/courseape-darwin-arm64": "1.0.0"
+    "@dyliu0306/courseape-win32-x64": "1.0.1",
+    "@dyliu0306/courseape-win32-arm64": "1.0.1",
+    "@dyliu0306/courseape-linux-x64": "1.0.1",
+    "@dyliu0306/courseape-linux-arm64": "1.0.1",
+    "@dyliu0306/courseape-darwin-x64": "1.0.1",
+    "@dyliu0306/courseape-darwin-arm64": "1.0.1"
   },
   "license": "PolyForm-Noncommercial-1.0.0",
   "engines": {
