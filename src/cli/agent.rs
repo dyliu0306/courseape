@@ -517,9 +517,10 @@ fn run_resolve(query: &str, _cli: &Cli) -> anyhow::Result<()> {
     let result = json!({
         "query": query,
         "candidates": candidates,
-        "auto_select": candidates.first().map(|c| {
-            matches!(c.confidence, resolver::MatchConfidence::Exact | resolver::MatchConfidence::High)
-        }).unwrap_or(false),
+        "auto_select": candidates.len() == 1
+            || candidates.first().map(|c| {
+                matches!(c.confidence, resolver::MatchConfidence::Exact | resolver::MatchConfidence::High)
+            }).unwrap_or(false),
     });
 
     println!("{}", serde_json::to_string_pretty(&result)?);

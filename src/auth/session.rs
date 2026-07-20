@@ -52,8 +52,11 @@ impl Session {
         if !path.exists() {
             return Ok(None);
         }
-        let session: Self = serde_json::from_str(&std::fs::read_to_string(&path)?)
-            .context("Invalid legacy session file")?;
+        let raw = std::fs::read_to_string(&path)?;
+        // Strip UTF-8 BOM (PowerShell Set-Content default encoding)
+        let json_str = raw.strip_prefix('\u{FEFF}').unwrap_or(&raw);
+        let session: Self =
+            serde_json::from_str(json_str).context("Invalid legacy session file")?;
         session.save()?;
         Ok(Some(session))
     }

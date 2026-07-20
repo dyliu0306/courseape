@@ -169,16 +169,33 @@ pub fn is_authenticated_grade_body(body: &[u8]) -> bool {
 }
 
 /// Collect cookie name=value pairs from Set-Cookie headers.
+///
+/// `JSESSIONID` is first-wins: the login POST's authenticated session must not
+/// be overwritten by an unauthenticated session ID from a redirect response.
 fn collect_cookies_from_response(resp: &reqwest::Response, cookies: &mut Vec<(String, String)>) {
-    for header_value in resp.headers().get_all("set-cookie").iter() {
-        if let Ok(s) = header_value.to_str() {
-            if let Some((name, value)) = parse_set_cookie(s) {
-                // Update existing or add new
-                if let Some(existing) = cookies.iter_mut().find(|(n, _)| n == &name) {
-                    existing.1 = value;
-                } else {
-                    cookies.push((name, value));
-                }
+    let headers: Vec<_> = resp
+        .headers()
+        .get_all("set-cookie")
+        .iter()
+        .filter_map(|v| v.to_str().ok().map(|s| s.to_string()))
+        .collect();
+    collect_cookies_from_headers(&headers, cookies);
+}
+
+fn collect_cookies_from_headers(raw_headers: &[String], cookies: &mut Vec<(String, String)>) {
+    for header_value in raw_headers {
+        if let Some((name, value)) = parse_set_cookie(header_value) {
+            if name == "JSESSIONID"
+                && cookies
+                    .iter()
+                    .any(|(existing_name, _)| existing_name == "JSESSIONID")
+            {
+                continue;
+            }
+            if let Some(existing) = cookies.iter_mut().find(|(n, _)| n == &name) {
+                existing.1 = value;
+            } else {
+                cookies.push((name, value));
             }
         }
     }
@@ -233,5 +250,37 @@ mod tests {
         assert!(is_authenticated_grade_body(
             "<html><table><td>歷年成績</td></table></html>".as_bytes()
         ));
+    }
+
+    #[test]
+    fn post_jsessionid_survives_redirect() {
+        let mut cookies = Vec::new();
+        // Step 1: POST login sets authenticated JSESSIONID
+        collect_cookies_from_headers(
+            &["JSESSIONID=AAA-authenticated; Path=/".to_string()],
+            &mut cookies,
+        );
+        // Step 2: redirect sets a different JSESSIONID (unauthenticated)
+        collect_cookies_from_headers(
+            &["JSESSIONID=BBB-unauthenticated; Path=/".to_string()],
+            &mut cookies,
+        );
+        let jsessionid = cookies
+            .iter()
+            .find(|(name, _)| name == "JSESSIONID")
+            .map(|(_, val)| val.as_str());
+        assert_eq!(jsessionid, Some("AAA-authenticated"));
+    }
+
+    #[test]
+    fn non_jsessionid_cookies_update_normally() {
+        let mut cookies = Vec::new();
+        collect_cookies_from_headers(&["lang=zh-TW; Path=/".to_string()], &mut cookies);
+        collect_cookies_from_headers(&["lang=en; Path=/".to_string()], &mut cookies);
+        let lang = cookies
+            .iter()
+            .find(|(name, _)| name == "lang")
+            .map(|(_, val)| val.as_str());
+        assert_eq!(lang, Some("en"));
     }
 }
