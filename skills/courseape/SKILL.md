@@ -41,7 +41,7 @@ courseape agent doctor
   ↓
 判斷 logged_in / profile_complete / 資料齊全
   ├─ logged_in = false → 告知使用者執行 courseape login
-  ├─ profile_complete = false → courseape agent setup
+  ├─ profile_complete = false → courseape agent setup --department "<使用者系所>"
   │   → Agent 從結果判斷是否需要確認系所
   ├─ 缺資料 → courseape agent prepare <task>
   └─ 資料齊全 → 進入對應 workflow
@@ -90,7 +90,7 @@ courseape agent doctor
 
 執行：
 ```bash
-courseape agent setup
+courseape agent setup --department "資管系"
 ```
 
 此命令會自動：
@@ -136,8 +136,8 @@ courseape agent prepare planning
 **流程**：
 1. `courseape agent doctor` — 檢查現狀
 2. 如果未登入 → 告知使用者執行 `courseape login`
-3. `courseape agent setup` — 自動推導 profile
-4. 確認系所（如果需要）
+3. 詢問使用者系所名稱
+4. `courseape agent setup --department "<系所名稱>"` — 推導並寫入完整 profile
 5. 告知使用者設定完成
 
 ---
@@ -191,7 +191,7 @@ courseape agent prepare planning
 1. `courseape agent doctor` — 檢查狀態
 2. 自動補齊（含 graduation + planning）
 3. `courseape agent prepare planning` — 確認開課資料
-4. 執行自動規劃：
+4. 執行自動規劃（預設只顯示候選）：
    ```bash
    courseape courses plan --term <next_term>
    ```
@@ -199,7 +199,7 @@ courseape agent prepare planning
    ```bash
    courseape courses filter --term <next_term> --keyword <缺修課程名>
    ```
-6. 加入備選清單：
+6. 取得使用者確認後加入備選清單：
    ```bash
    courseape shortlist add <code> --term <next_term>
    ```

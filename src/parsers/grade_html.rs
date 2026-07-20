@@ -55,7 +55,10 @@ pub fn parse_grade_html(html: &str) -> Vec<CompletedCourse> {
         if line.contains("<tr") {
             let row_html = collect_row(&lines, i);
             if let Some(course) = parse_grade_row(&row_html, &current_term) {
-                if !course.name.is_empty() && !course.name.contains("Department") && !course.name.contains("Transcript") {
+                if !course.name.is_empty()
+                    && !course.name.contains("Department")
+                    && !course.name.contains("Transcript")
+                {
                     courses.push(course);
                 }
             }
@@ -74,11 +77,17 @@ fn extract_term_from_header(line: &str) -> Option<String> {
         let year_part = text[..year_idx].trim();
         let year: String = year_part.chars().filter(|c| c.is_ascii_digit()).collect();
         if year.len() >= 3 {
-            let year3 = &year[year.len()-3..];
-            if text.contains('1') && text.contains("學期") && text.find('1').unwrap() < text.find("學期").unwrap() {
+            let year3 = &year[year.len() - 3..];
+            if text.contains('1')
+                && text.contains("學期")
+                && text.find('1').unwrap() < text.find("學期").unwrap()
+            {
                 return Some(format!("{}1", year3));
             }
-            if text.contains('2') && text.contains("學期") && text.find('2').unwrap() < text.find("學期").unwrap() {
+            if text.contains('2')
+                && text.contains("學期")
+                && text.find('2').unwrap() < text.find("學期").unwrap()
+            {
                 return Some(format!("{}2", year3));
             }
         }
@@ -120,8 +129,13 @@ fn parse_grade_row(row_html: &str, term: &str) -> Option<CompletedCourse> {
 
     // Skip header rows
     let first_cell = cells[0].trim();
-    if first_cell.contains("學年") || first_cell.contains("Transcript") || first_cell.contains("Semester")
-        || first_cell.contains("Total") || first_cell.contains("Department") || first_cell.contains("Category") {
+    if first_cell.contains("學年")
+        || first_cell.contains("Transcript")
+        || first_cell.contains("Semester")
+        || first_cell.contains("Total")
+        || first_cell.contains("Department")
+        || first_cell.contains("Category")
+    {
         return None;
     }
 
@@ -149,7 +163,12 @@ fn parse_grade_row(row_html: &str, term: &str) -> Option<CompletedCourse> {
         return None;
     }
     // Take only Chinese name (before English)
-    let course_name = course_name_raw.lines().next().unwrap_or(course_name_raw).trim().to_string();
+    let course_name = course_name_raw
+        .lines()
+        .next()
+        .unwrap_or(course_name_raw)
+        .trim()
+        .to_string();
 
     // Cell 4: Category (必修/選修)
     let category_raw = cells[4].trim();
@@ -176,9 +195,15 @@ fn parse_grade_row(row_html: &str, term: &str) -> Option<CompletedCourse> {
     let status_text = normalize_status(cells[7].trim());
     let status = if status_text.contains("停修") || status_text.contains("Withdrawn") {
         "停修".to_string()
-    } else if status_text.contains("不及格") || status_text.contains("Fail") || status_text.contains("當") {
+    } else if status_text.contains("不及格")
+        || status_text.contains("Fail")
+        || status_text.contains("當")
+    {
         "不及格".to_string()
-    } else if status_text.contains("及格") || status_text.contains("Pass") || status_text.contains("通過") {
+    } else if status_text.contains("及格")
+        || status_text.contains("Pass")
+        || status_text.contains("通過")
+    {
         "及格".to_string()
     } else if let Some(s) = score {
         if s < 60 {
@@ -212,7 +237,10 @@ fn extract_cells(row_html: &str) -> Vec<String> {
         // Find the closing > of the <td> tag
         let tag_end = after_start.find('>').unwrap_or(0);
         let content_start = &after_start[tag_end + 1..];
-        if let Some(end) = content_start.find("</td>").or_else(|| content_start.find("</TD>")) {
+        if let Some(end) = content_start
+            .find("</td>")
+            .or_else(|| content_start.find("</TD>"))
+        {
             let cell_html = &content_start[..end];
             let cell_text = strip_html_tags(cell_html).trim().to_string();
             cells.push(cell_text);
@@ -226,9 +254,13 @@ fn extract_cells(row_html: &str) -> Vec<String> {
 
 fn strip_html_tags(s: &str) -> String {
     // Convert <br> / <br/> / <br /> to newlines before stripping tags
-    let br_replaced = s.replace("<br/>", "\n").replace("<BR/>", "\n")
-        .replace("<br />", "\n").replace("<BR />", "\n")
-        .replace("<br>", "\n").replace("<BR>", "\n");
+    let br_replaced = s
+        .replace("<br/>", "\n")
+        .replace("<BR/>", "\n")
+        .replace("<br />", "\n")
+        .replace("<BR />", "\n")
+        .replace("<br>", "\n")
+        .replace("<BR>", "\n");
     let mut result = String::new();
     let mut in_tag = false;
     for ch in br_replaced.chars() {
@@ -236,15 +268,20 @@ fn strip_html_tags(s: &str) -> String {
             '<' => in_tag = true,
             '>' => in_tag = false,
             '\u{00A0}' => result.push(' '), // &nbsp; -> space
-            '\u{FEFF}' => {}, // BOM
-            '\u{200B}' => {}, // zero-width space
-            '\u{200C}' => {}, // zero-width non-joiner
-            '\u{200D}' => {}, // zero-width joiner
+            '\u{FEFF}' => {}                // BOM
+            '\u{200B}' => {}                // zero-width space
+            '\u{200C}' => {}                // zero-width non-joiner
+            '\u{200D}' => {}                // zero-width joiner
             _ if !in_tag => result.push(ch),
             _ => {}
         }
     }
-    result.chars().filter(|c| !c.is_control() || *c == '\n' || *c == '\r' || *c == '\t').collect::<String>().trim().to_string()
+    result
+        .chars()
+        .filter(|c| !c.is_control() || *c == '\n' || *c == '\r' || *c == '\t')
+        .collect::<String>()
+        .trim()
+        .to_string()
 }
 
 /// Normalize status text by removing invisible characters and whitespace variations.
@@ -266,8 +303,14 @@ mod tests {
 
     #[test]
     fn test_extract_term_from_font() {
-        assert_eq!(extract_term_from_font("<font size=\"2\">1121</font>"), Some("1121".to_string()));
-        assert_eq!(extract_term_from_font("<font size=\"2\">1132</font>"), Some("1132".to_string()));
+        assert_eq!(
+            extract_term_from_font("<font size=\"2\">1121</font>"),
+            Some("1121".to_string())
+        );
+        assert_eq!(
+            extract_term_from_font("<font size=\"2\">1132</font>"),
+            Some("1132".to_string())
+        );
     }
 
     #[test]

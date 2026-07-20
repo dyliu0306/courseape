@@ -13,14 +13,23 @@ function getExePath(): string {
     ext = ".exe";
   }
 
+  const supported = new Set([
+    "win32-x64", "win32-arm64", "linux-x64", "linux-arm64",
+    "darwin-x64", "darwin-arm64",
+  ]);
+  if (!supported.has(`${os}-${arch}`)) {
+    throw new Error(`Unsupported platform: ${process.platform} ${arch}`);
+  }
+
   const pkg = `@dyliu0306/courseape-${os}-${arch}`;
   try {
     const pkgJson = require.resolve(`${pkg}/package.json`);
     return join(pkgJson, "..", "bin", `courseape${ext}`);
-  } catch (e) {
+  } catch (error) {
     throw new Error(
-      `Unsupported platform: ${process.platform} ${arch}\n` +
-      `Try installing the platform package manually: npm install ${pkg}`
+      `Platform package ${pkg} is missing or corrupt. ` +
+      `Reinstall CourseApe without --omit=optional.\n` +
+      `Cause: ${error instanceof Error ? error.message : String(error)}`
     );
   }
 }
@@ -34,4 +43,9 @@ if (result.error) {
   process.exit(1);
 }
 
-process.exit(result.status ?? 0);
+if (result.signal) {
+  console.error(`courseape terminated by signal ${result.signal}`);
+  process.exit(1);
+}
+
+process.exit(result.status ?? 1);

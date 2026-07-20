@@ -3,20 +3,18 @@ use crate::{Cli, DataCommands};
 use anyhow::Context;
 use std::io::Read;
 
-pub async fn run(cmd: &DataCommands, _cli: &Cli) -> anyhow::Result<()> {
+pub async fn run(cmd: &DataCommands, cli: &Cli) -> anyhow::Result<()> {
     match cmd {
-        DataCommands::Export {
-            scope,
-            format: _,
-            output_file: _,
-        } => {
+        DataCommands::Export { scope } => {
             let db = storage::db::open()?;
             let repo = storage::repo::Repository::new(&db);
 
             match scope.as_str() {
                 "profile" => {
                     let profile = repo.get_profile()?;
-                    println!("{}", serde_json::to_string_pretty(&profile)?);
+                    let export =
+                        profile.map(|profile| export_profile(&profile, cli.no_redact_personal));
+                    println!("{}", serde_json::to_string_pretty(&export)?);
                 }
                 "departments" => {
                     let depts = repo.list_departments(114)?;
@@ -34,23 +32,10 @@ pub async fn run(cmd: &DataCommands, _cli: &Cli) -> anyhow::Result<()> {
                 }
                 "grade-html" => {
                     // Export grade HTML path and metadata for Agent analysis
-                    let snap_dir = dirs::data_dir()
-                        .or_else(dirs::config_dir)
-                        .ok_or_else(|| anyhow::anyhow!("Cannot find data dir"))?
-                        .join("courseape")
-                        .join("snapshots");
-                    let mut grade_file = None;
-                    if snap_dir.exists() {
-                        for entry in std::fs::read_dir(&snap_dir)? {
-                            let entry = entry?;
-                            let name = entry.file_name().to_string_lossy().to_string();
-                            if name.starts_with("grades") {
-                                grade_file = Some(entry.path());
-                                break;
-                            }
-                        }
-                    }
-                    let path = grade_file.ok_or_else(|| anyhow::anyhow!("No grade snapshot found. Run `sync grades` first."))?;
+                    let path = storage::snapshot::SnapshotArchive::newest_valid_grade(None)?
+                        .ok_or_else(|| {
+                            anyhow::anyhow!("No grade snapshot found. Run `sync grades` first.")
+                        })?;
                     let bytes = std::fs::read(&path)?;
                     let hash = {
                         use sha2::Digest;
@@ -83,7 +68,10 @@ pub async fn run(cmd: &DataCommands, _cli: &Cli) -> anyhow::Result<()> {
                             }));
                         }
                     }
-                    eprintln!("Exported {} offerings from all terms (for category lookup).", all_offerings.len());
+                    eprintln!(
+                        "Exported {} offerings from all terms (for category lookup).",
+                        all_offerings.len()
+                    );
                     println!("{}", serde_json::to_string_pretty(&all_offerings)?);
                 }
                 _ => {
@@ -112,8 +100,10 @@ pub async fn run(cmd: &DataCommands, _cli: &Cli) -> anyhow::Result<()> {
                     // Import Agent-analyzed grade data
                     // Expected format: array of {name, credits, status, term, score?, category?}
                     let grades: Vec<crate::parsers::grade_html::CompletedCourse> =
-                        serde_json::from_str(&json_str)
-                            .context("Invalid grades JSON. Expected array of {name, credits, status, term}")?;
+                        serde_json::from_str(&json_str).context(
+                            "Invalid grades JSON. Expected array of {name, credits, status, term}",
+                        )?;
+                    validate_grades(&grades)?;
 
                     let count = grades.len();
                     repo.upsert_analyzed_grades(&grades)?;
@@ -138,5 +128,89 @@ pub async fn run(cmd: &DataCommands, _cli: &Cli) -> anyhow::Result<()> {
             eprintln!("Purge complete. Keyring credentials preserved.");
             Ok(())
         }
+    }
+}
+
+fn validate_grades(grades: &[crate::parsers::grade_html::CompletedCourse]) -> anyhow::Result<()> {
+    for (index, grade) in grades.iter().enumerate() {
+        if grade.name.trim().is_empty() {
+            anyhow::bail!("Grade row {index} has an empty name");
+        }
+        let term = grade.term.as_bytes();
+        if term.len() != 4
+            || !term.iter().all(u8::is_ascii_digit)
+            || !matches!(term[3], b'1' | b'2')
+        {
+            anyhow::bail!("Grade row {index} has invalid term '{}'.", grade.term);
+        }
+        if !matches!(grade.status.as_str(), "及格" | "不及格" | "停修") {
+            anyhow::bail!(
+                "Grade row {index} has unsupported status '{}'.",
+                grade.status
+            );
+        }
+        if grade.score.is_some_and(|score| score > 100) {
+            anyhow::bail!("Grade row {index} has a score above 100");
+        }
+        if !matches!(grade.category.as_str(), "" | "必修" | "選修") {
+            anyhow::bail!(
+                "Grade row {index} has unsupported category '{}'.",
+                grade.category
+            );
+        }
+    }
+    Ok(())
+}
+
+fn export_profile(
+    profile: &crate::domain::profile::StudentProfile,
+    include_personal: bool,
+) -> serde_json::Value {
+    serde_json::json!({
+        "student_id": if include_personal {
+            profile.student_id.clone()
+        } else {
+            crate::redact::profile::mask_student_id(&profile.student_id)
+        },
+        "dept_code": profile.dept_code,
+        "dept_name": profile.dept_name,
+        "enroll_year": profile.enroll_year,
+        "degree": profile.degree,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn profile_export_redacts_by_default() {
+        let profile = crate::domain::profile::StudentProfile {
+            student_id: "11244151".into(),
+            dept_code: Some("5400B".into()),
+            dept_name: Some("資訊管理學系".into()),
+            enroll_year: Some(112),
+            degree: Some("學士".into()),
+        };
+        let redacted = export_profile(&profile, false).to_string();
+        assert!(!redacted.contains("11244151"));
+        assert!(redacted.contains("****4151"));
+        assert!(export_profile(&profile, true)
+            .to_string()
+            .contains("11244151"));
+    }
+
+    #[test]
+    fn grade_validation_rejects_invalid_rows() {
+        let grade = crate::parsers::grade_html::CompletedCourse {
+            code: "CS101".into(),
+            name: "程式設計".into(),
+            credits: 3,
+            status: "未知".into(),
+            term: "1141".into(),
+            score: Some(80),
+            category: "必修".into(),
+        };
+        assert!(validate_grades(&[grade]).is_err());
     }
 }

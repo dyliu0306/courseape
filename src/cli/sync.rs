@@ -32,12 +32,13 @@ pub async fn run(cmd: &SyncCommands, _cli: &Cli) -> anyhow::Result<()> {
             Ok(())
         }
         SyncCommands::Requirements { year } => {
-            let profile = repo.get_profile()?.ok_or(
-                crate::error::CourseapeError::ProfileNotSet
-            )?;
-            let dept_code = profile.dept_code.as_deref().ok_or(
-                crate::error::CourseapeError::ProfileNotSet
-            )?;
+            let profile = repo
+                .get_profile()?
+                .ok_or(crate::error::CourseapeError::ProfileNotSet)?;
+            let dept_code = profile
+                .dept_code
+                .as_deref()
+                .ok_or(crate::error::CourseapeError::ProfileNotSet)?;
 
             // Determine year from student ID first 3 digits if not specified
             let effective_year = if *year > 0 {
@@ -51,15 +52,25 @@ pub async fn run(cmd: &SyncCommands, _cli: &Cli) -> anyhow::Result<()> {
                 }
             };
 
-            eprintln!("Downloading requirement PDF for {} (year {})...", dept_code, effective_year);
-            let result = NecessaryCourseConnector::download_requirement_pdf(effective_year, dept_code).await?;
+            eprintln!(
+                "Downloading requirement PDF for {} (year {})...",
+                dept_code, effective_year
+            );
+            let result =
+                NecessaryCourseConnector::download_requirement_pdf(effective_year, dept_code)
+                    .await?;
 
             if result.status != 200 {
                 anyhow::bail!("PDF download returned status {}", result.status);
             }
 
-            let (hash, path) = storage::snapshot::SnapshotArchive::save(
-                &format!("requirements_{}_{}.pdf", effective_year, dept_code),
+            if !result.body_bytes.starts_with(b"%PDF-") {
+                anyhow::bail!("Requirement download did not return a valid PDF");
+            }
+
+            let (hash, path) = storage::snapshot::SnapshotArchive::save_as(
+                &format!("requirements_{}_{}", effective_year, dept_code),
+                "pdf",
                 &result.body_bytes,
             )?;
 
@@ -70,21 +81,22 @@ pub async fn run(cmd: &SyncCommands, _cli: &Cli) -> anyhow::Result<()> {
             Ok(())
         }
         SyncCommands::Grades => {
-            let session = crate::auth::session::Session::load()?.ok_or(
-                crate::error::CourseapeError::NotLoggedIn
-            )?;
+            let session = crate::auth::session::Session::load()?
+                .ok_or(crate::error::CourseapeError::NotLoggedIn)?;
 
             eprintln!("Fetching grade HTML...");
-            let result = crate::connectors::itouch::ItouchConnector::fetch_grades(&session.cookie).await?;
+            let result =
+                crate::connectors::itouch::ItouchConnector::fetch_grades(&session.cookie).await?;
 
             if result.status != 200 {
                 anyhow::bail!("Grade fetch returned status {}", result.status);
             }
+            if !crate::connectors::itouch::is_authenticated_grade_body(&result.body_bytes) {
+                anyhow::bail!("Grade fetch returned an unauthenticated login page");
+            }
 
-            let (hash, path) = storage::snapshot::SnapshotArchive::save(
-                "grades",
-                &result.body_bytes,
-            )?;
+            let (hash, path) =
+                storage::snapshot::SnapshotArchive::save("grades", &result.body_bytes)?;
 
             eprintln!("Grade HTML saved (hash: {}...).", &hash[..16]);
             eprintln!("Work-package ready at: {}", path.display());

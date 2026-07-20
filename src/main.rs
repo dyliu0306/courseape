@@ -30,26 +30,11 @@ struct Cli {
     #[command(subcommand)]
     command: Commands,
 
-    #[arg(long, global = true)]
-    config: Option<PathBuf>,
-
-    #[arg(long, global = true, default_value_t = false)]
-    redact_personal: bool,
-
     #[arg(long, global = true, default_value_t = false)]
     no_redact_personal: bool,
 
-    #[arg(long, global = true, default_value_t = false)]
-    offline: bool,
-
     #[arg(long, global = true, value_enum, default_value_t = OutputFormat::default())]
     output: OutputFormat,
-
-    #[arg(long, global = true)]
-    verbose: bool,
-
-    #[arg(long, global = true)]
-    silent: bool,
 }
 
 #[derive(Subcommand)]
@@ -95,6 +80,15 @@ pub enum ProfileCommands {
     Show,
     /// Edit profile interactively
     Edit,
+    /// Set profile fields non-interactively
+    Set {
+        #[arg(long)]
+        department: Option<String>,
+        #[arg(long)]
+        enroll_year: Option<u32>,
+        #[arg(long)]
+        degree: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -215,9 +209,9 @@ pub enum CoursesCommands {
     Plan {
         #[arg(long)]
         term: String,
-        /// Only show matches, don't add to shortlist
+        /// Apply recommendations to the shortlist
         #[arg(long)]
-        dry_run: bool,
+        apply: bool,
     },
     /// Sync historical offerings for all past terms (for grade analysis)
     History {
@@ -259,10 +253,6 @@ pub enum DataCommands {
     Export {
         #[arg(long)]
         scope: String,
-        #[arg(long)]
-        format: Option<String>,
-        #[arg(long)]
-        output_file: Option<PathBuf>,
     },
     /// Import Agent analysis results (JSON from file or stdin)
     Import {
@@ -294,7 +284,11 @@ pub enum AgentCommands {
     /// Report system status: login, profile, cache, data freshness (JSON)
     Doctor,
     /// Auto-setup: login check, sync departments, auto-detect profile
-    Setup,
+    Setup {
+        /// Department name, abbreviation, or code
+        #[arg(long)]
+        department: Option<String>,
+    },
     /// One-shot data preparation for graduation analysis or course planning
     #[command(subcommand)]
     Prepare(PrepareCommands),

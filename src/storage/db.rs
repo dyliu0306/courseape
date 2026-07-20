@@ -16,8 +16,16 @@ pub fn open() -> anyhow::Result<Connection> {
     let conn = Connection::open(&path)?;
     conn.execute_batch(
         "PRAGMA journal_mode=WAL;
-         PRAGMA foreign_keys=ON;"
+         PRAGMA foreign_keys=ON;",
     )?;
+    migrate(&conn)?;
+    Ok(conn)
+}
+
+#[cfg(test)]
+pub fn open_in_memory() -> anyhow::Result<Connection> {
+    let conn = Connection::open_in_memory()?;
+    conn.execute_batch("PRAGMA foreign_keys=ON;")?;
     migrate(&conn)?;
     Ok(conn)
 }
@@ -25,6 +33,8 @@ pub fn open() -> anyhow::Result<Connection> {
 const CREATE_OFFERINGS: &str = "CREATE TABLE offerings (
     code TEXT NOT NULL,
     term TEXT NOT NULL,
+    course_code TEXT NOT NULL DEFAULT '',
+    assignment_key TEXT NOT NULL,
     name TEXT NOT NULL,
     name_en TEXT NOT NULL DEFAULT '',
     teacher TEXT NOT NULL,
@@ -62,11 +72,12 @@ const CREATE_OFFERINGS: &str = "CREATE TABLE offerings (
     op_type TEXT NOT NULL DEFAULT '',
     cos_usr TEXT NOT NULL DEFAULT '',
     synced_at TEXT NOT NULL,
-    PRIMARY KEY (code, term, class_dept)
+    PRIMARY KEY (code, term, assignment_key)
 )";
 
 fn migrate(conn: &Connection) -> anyhow::Result<()> {
-    conn.execute_batch(
+    let tx = conn.unchecked_transaction()?;
+    tx.execute_batch(
         "CREATE TABLE IF NOT EXISTS departments (
             dept_code TEXT NOT NULL,
             name TEXT NOT NULL,
@@ -109,6 +120,7 @@ fn migrate(conn: &Connection) -> anyhow::Result<()> {
         );
 
         CREATE TABLE IF NOT EXISTS analyzed_grades (
+            code TEXT NOT NULL DEFAULT '',
             name TEXT NOT NULL,
             credits INTEGER NOT NULL DEFAULT 0,
             status TEXT NOT NULL DEFAULT '及格',
@@ -116,65 +128,126 @@ fn migrate(conn: &Connection) -> anyhow::Result<()> {
             score INTEGER,
             category TEXT NOT NULL DEFAULT '',
             imported_at TEXT NOT NULL,
-            PRIMARY KEY (name, term)
-        );"
+            PRIMARY KEY (code, name, term)
+        );",
     )?;
 
-    migrate_offerings(conn)?;
+    migrate_analyzed_grades(&tx)?;
+    migrate_offerings(&tx)?;
+    tx.commit()?;
+    Ok(())
+}
+
+fn migrate_analyzed_grades(conn: &Connection) -> anyhow::Result<()> {
+    let sql: String = conn.query_row(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='analyzed_grades'",
+        [],
+        |row| row.get(0),
+    )?;
+    if sql.contains("PRIMARY KEY (code, name, term)") {
+        return Ok(());
+    }
+
+    let has_code = conn.query_row(
+        "SELECT COUNT(*) FROM pragma_table_info('analyzed_grades') WHERE name='code'",
+        [],
+        |row| row.get::<_, i32>(0),
+    )? > 0;
+    conn.execute_batch("ALTER TABLE analyzed_grades RENAME TO _analyzed_grades_old;")?;
+    conn.execute_batch(
+        "CREATE TABLE analyzed_grades (
+            code TEXT NOT NULL DEFAULT '', name TEXT NOT NULL,
+            credits INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT '及格',
+            term TEXT NOT NULL DEFAULT '', score INTEGER, category TEXT NOT NULL DEFAULT '',
+            imported_at TEXT NOT NULL, PRIMARY KEY (code, name, term)
+        );",
+    )?;
+    let code = if has_code { "code" } else { "''" };
+    conn.execute_batch(&format!(
+        "INSERT INTO analyzed_grades
+         (code, name, credits, status, term, score, category, imported_at)
+         SELECT {code}, name, credits, status, term, score, category, imported_at
+         FROM _analyzed_grades_old;
+         DROP TABLE _analyzed_grades_old;"
+    ))?;
     Ok(())
 }
 
 fn migrate_offerings(conn: &Connection) -> anyhow::Result<()> {
-    let current_sql: Option<String> = conn.query_row(
-        "SELECT sql FROM sqlite_master WHERE type='table' AND name='offerings'",
-        [], |row| row.get(0),
-    ).ok();
+    let current_sql: Option<String> = conn
+        .query_row(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='offerings'",
+            [],
+            |row| row.get(0),
+        )
+        .ok();
 
     match current_sql {
         None => {
             // Table doesn't exist, create with full schema
             conn.execute_batch(CREATE_OFFERINGS)?;
         }
-        Some(ref sql) if sql.contains("PRIMARY KEY (code, term, class_dept)") => {
+        Some(ref sql) if sql.contains("PRIMARY KEY (code, term, assignment_key)") => {
             // Already correct schema
         }
         Some(_) => {
-            // Old schema, migrate data
-            let has_class_dept: bool = conn.query_row(
-                "SELECT COUNT(*) FROM pragma_table_info('offerings') WHERE name='class_dept'",
-                [], |row| row.get::<_, i32>(0),
-            ).unwrap_or(0) > 0;
-
+            // Old schema already collapsed multi-teacher API rows. Do not copy corrupted
+            // cache forward; rebuild it from the next complete API sync.
             conn.execute_batch("ALTER TABLE offerings RENAME TO _offerings_old;")?;
             conn.execute_batch(CREATE_OFFERINGS)?;
-
-            if has_class_dept {
-                conn.execute_batch(
-                    "INSERT OR IGNORE INTO offerings
-                     (code, term, name, name_en, teacher, teacher_id, credits, dept_code, dept_name,
-                      class_dept, class_dept_name, admin_dept, admin_dept_name, time_slots, classroom,
-                      category, max_capacity, enrolled, remaining, div, course_type, language,
-                      is_emi, is_english, is_distance, is_pbl, is_programming, sdgs, spec, cross_name,
-                      memo, is_stop, auto_set, semester_half, op_clock, tch_clock, op_type, cos_usr, synced_at)
-                     SELECT code, term, name, name_en, teacher, teacher_id, credits, dept_code, dept_name,
-                      class_dept, class_dept_name, admin_dept, admin_dept_name, time_slots, classroom,
-                      category, max_capacity, enrolled, remaining, div, course_type, language,
-                      is_emi, is_english, is_distance, is_pbl, is_programming, sdgs, spec, cross_name,
-                      memo, is_stop, auto_set, semester_half, op_clock, tch_clock, op_type, cos_usr, synced_at
-                     FROM _offerings_old;"
-                )?;
-            } else {
-                conn.execute_batch(
-                    "INSERT OR IGNORE INTO offerings
-                     (code, term, name, teacher, credits, dept_code, time_slots, category,
-                      max_capacity, remaining, synced_at, class_dept)
-                     SELECT code, term, name, teacher, credits, dept_code, time_slots, category,
-                      max_capacity, remaining, synced_at, '' FROM _offerings_old;"
-                )?;
-            }
             conn.execute_batch("DROP TABLE _offerings_old;")?;
         }
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn old_collapsed_offerings_cache_is_invalidated() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE offerings (
+                code TEXT NOT NULL, term TEXT NOT NULL, class_dept TEXT NOT NULL DEFAULT '',
+                PRIMARY KEY (code, term, class_dept)
+            );
+            INSERT INTO offerings (code, term, class_dept) VALUES ('GE481C', '1151', '2061B');",
+        )
+        .unwrap();
+        migrate_offerings(&conn).unwrap();
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM offerings", [], |row| row.get(0))
+            .unwrap();
+        let has_assignment_key: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('offerings') WHERE name='assignment_key'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 0);
+        assert_eq!(has_assignment_key, 1);
+    }
+
+    #[test]
+    fn analyzed_grades_migration_preserves_existing_rows() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE analyzed_grades (
+                code TEXT NOT NULL DEFAULT '', name TEXT NOT NULL, credits INTEGER NOT NULL,
+                status TEXT NOT NULL, term TEXT NOT NULL, score INTEGER, category TEXT NOT NULL,
+                imported_at TEXT NOT NULL, PRIMARY KEY (name, term)
+            );
+            INSERT INTO analyzed_grades VALUES ('CS101', '程式設計', 3, '及格', '1141', 80, '必修', 'now');",
+        )
+        .unwrap();
+        migrate_analyzed_grades(&conn).unwrap();
+        let code: String = conn
+            .query_row("SELECT code FROM analyzed_grades", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(code, "CS101");
+    }
 }

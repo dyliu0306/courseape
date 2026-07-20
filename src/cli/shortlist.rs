@@ -16,9 +16,15 @@ pub async fn run(cmd: &ShortlistCommands, _cli: &Cli) -> anyhow::Result<()> {
             let o = offering.unwrap();
             let added = repo.add_to_shortlist(course_code, term)?;
             if added {
-                eprintln!("Added {} ({}) to shortlist for term {}.", course_code, o.name, term);
+                eprintln!(
+                    "Added {} ({}) to shortlist for term {}.",
+                    course_code, o.name, term
+                );
             } else {
-                eprintln!("{} ({}) already in shortlist for term {}.", course_code, o.name, term);
+                eprintln!(
+                    "{} ({}) already in shortlist for term {}.",
+                    course_code, o.name, term
+                );
             }
             Ok(())
         }
@@ -33,15 +39,25 @@ pub async fn run(cmd: &ShortlistCommands, _cli: &Cli) -> anyhow::Result<()> {
                 eprintln!("Shortlist is empty for term {}.", term);
                 return Ok(());
             }
-            let offerings = repo.list_offerings(term)?;
             eprintln!("Shortlist (term {}): {} courses", term, codes.len());
-            for code in &codes {
-                if let Some(o) = offerings.iter().find(|o| &o.code == code) {
-                    println!("  {} | {} | {} | {}cr | slots: {}",
-                        o.code, o.name, o.teacher, o.credits, o.time_slots.join(", "));
-                } else {
-                    println!("  {} (not in cache)", code);
+            let planned = repo.get_planned_courses(term)?;
+            for o in &planned {
+                if codes.contains(&o.code) {
+                    println!(
+                        "  {} | {} | {} | {}cr | slots: {}",
+                        o.code,
+                        o.name,
+                        o.teacher,
+                        o.credits,
+                        o.time_slots.join(", ")
+                    );
                 }
+            }
+            for code in codes
+                .iter()
+                .filter(|code| !planned.iter().any(|o| &o.code == *code))
+            {
+                println!("  {} | (not in cached offerings)", code);
             }
             Ok(())
         }

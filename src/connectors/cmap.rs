@@ -1,5 +1,5 @@
-use anyhow::Context;
 use crate::connectors::ConnectorResult;
+use anyhow::Context;
 
 const BASE_URL: &str = "https://cmap.cycu.edu.tw:8443/Syllabus/syllabus/outPutCoursePreView.action";
 

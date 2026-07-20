@@ -8,7 +8,10 @@ pub async fn run_login(_cli: &Cli) -> anyhow::Result<()> {
     // Try loading from keyring, then env vars, then interactive prompt
     let creds = match StoredCredentials::load() {
         Ok(Some(c)) => {
-            eprintln!("Using stored credentials for ****{}", &c.student_id[c.student_id.len().min(4)..]);
+            eprintln!(
+                "Using stored credentials for ****{}",
+                &c.student_id[c.student_id.len().min(4)..]
+            );
             c
         }
         Ok(None) => {
@@ -68,25 +71,32 @@ pub async fn run_login(_cli: &Cli) -> anyhow::Result<()> {
 pub async fn run_status(_cli: &Cli) -> anyhow::Result<()> {
     match Session::load()? {
         Some(session) => {
-            let masked = crate::redact::profile::mask_student_id(
-                &session.cookie.chars().take(8).collect::<String>(),
+            let valid = ItouchConnector::validate_session(&session.cookie).await?;
+            eprintln!("Session: {}", if valid { "valid" } else { "expired" });
+            eprintln!(
+                "Logged in at: {}",
+                session.logged_in_at.format("%Y-%m-%d %H:%M:%S UTC")
             );
-            eprintln!("Status: logged in");
-            eprintln!("Session cookie: {}...", masked);
-            eprintln!("Logged in at: {}", session.logged_in_at.format("%Y-%m-%d %H:%M:%S UTC"));
 
             // Try to show profile if exists
             let db = storage::db::open()?;
             let repo = storage::repo::Repository::new(&db);
             if let Some(profile) = repo.get_profile()? {
                 let masked_id = crate::redact::profile::mask_student_id(&profile.student_id);
-                eprintln!("Profile: {} / {} / {}",
+                eprintln!(
+                    "Profile: {} / {} / {}",
                     masked_id,
                     profile.dept_name.as_deref().unwrap_or("(未設定)"),
-                    profile.enroll_year.map_or("(未設定)".to_string(), |y| format!("{}學年", y)),
+                    profile
+                        .enroll_year
+                        .map_or("(未設定)".to_string(), |y| format!("{}學年", y)),
                 );
             }
-            Ok(())
+            if valid {
+                Ok(())
+            } else {
+                anyhow::bail!("Session expired. Run `courseape login` again.")
+            }
         }
         None => {
             eprintln!("Status: not logged in");
@@ -100,9 +110,9 @@ pub async fn run_logout(_cli: &Cli, clear_credentials: bool) -> anyhow::Result<(
     eprintln!("Session cleared.");
 
     if clear_credentials {
-            eprintln!("WARNING: This will delete the stored credentials from OS keyring.");
-            eprintln!("You will need to re-enter credentials next time.");
-            eprintln!("Type 'y' to confirm:");
+        eprintln!("WARNING: This will delete the stored credentials from OS keyring.");
+        eprintln!("You will need to re-enter credentials next time.");
+        eprintln!("Type 'y' to confirm:");
         let mut input = String::new();
         std::io::stdin().read_line(&mut input)?;
         if input.trim().eq_ignore_ascii_case("y") {
@@ -133,16 +143,14 @@ pub async fn run_credentials(cmd: &CredentialsCommands, _cli: &Cli) -> anyhow::R
             };
             let creds = StoredCredentials::new(id, pass)?;
 
-            // Clear existing session first
-            let _ = Session::delete();
-
-            // Save to keyring
-            creds.save()?;
-            eprintln!("Credentials saved to OS keyring.");
-
             // Validate by logging in
             eprintln!("Validating new credentials...");
-            let (cookie, login_token) = ItouchConnector::login(&creds.student_id, &creds.password).await?;
+            let (cookie, login_token) =
+                ItouchConnector::login(&creds.student_id, &creds.password).await?;
+
+            // Replace stored state only after the new credentials are verified.
+            creds.save()?;
+            eprintln!("Credentials saved to OS keyring.");
 
             let has_token = login_token.is_some();
             let session = Session {

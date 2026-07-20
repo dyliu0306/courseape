@@ -1,10 +1,10 @@
 use crate::analysis;
+use crate::parsers::time_slot::{expand_time_slots, PERIOD_ORDER};
 use crate::storage;
 use crate::{Cli, CoursesCommands, OutputFormat};
 use chrono::Datelike;
 
 const DAYS: [&str; 7] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-const PERIODS: [&str; 15] = ["1", "2", "3", "4", "A", "B", "5", "6", "7", "8", "C", "D", "E", "F", "G"];
 
 pub async fn run(cmd: &CoursesCommands, cli: &Cli) -> anyhow::Result<()> {
     let db = storage::db::open()?;
@@ -14,29 +14,53 @@ pub async fn run(cmd: &CoursesCommands, cli: &Cli) -> anyhow::Result<()> {
         CoursesCommands::Offerings { term } => {
             let offerings = repo.list_offerings(term)?;
             if offerings.is_empty() {
-                eprintln!("No cached offerings for term {}. Fetching from iTouch...", term);
+                eprintln!(
+                    "No cached offerings for term {}. Fetching from iTouch...",
+                    term
+                );
                 let fetched = fetch_offerings_from_api(term).await?;
                 let count = fetched.len();
+                if count == 0 {
+                    anyhow::bail!("No offerings published for term {term}");
+                }
                 repo.upsert_offerings(term, &fetched)?;
                 eprintln!("Synced {} offerings for term {}.", count, term);
-                let display: Vec<_> = fetched.iter().take(20).cloned().collect();
+                let sections = crate::storage::repo::merge_offering_rows(&fetched);
+                let display: Vec<_> = sections.iter().take(20).cloned().collect();
                 match cli.output {
-                    OutputFormat::Table => println!("{}", crate::output::formatter::offerings_table(&display)),
-                    _ => println!("{}", serde_json::to_string_pretty(&display)?),
+                    OutputFormat::Table => {
+                        println!("{}", crate::output::formatter::offerings_table(&display))
+                    }
+                    OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&display)?),
+                    OutputFormat::Csv => {
+                        print!("{}", crate::output::formatter::offerings_csv(&display)?)
+                    }
                 }
-                if fetched.len() > 20 {
-                    eprintln!("... and {} more. Use `courses filter` to narrow down.", fetched.len() - 20);
+                if sections.len() > 20 {
+                    eprintln!(
+                        "... and {} more. Use `courses filter` to narrow down.",
+                        sections.len() - 20
+                    );
                 }
                 return Ok(());
             }
             eprintln!("{} offerings cached for term {}.", offerings.len(), term);
-            let display: Vec<_> = offerings.iter().take(20).cloned().collect();
+            let sections = crate::storage::repo::merge_offering_rows(&offerings);
+            let display: Vec<_> = sections.iter().take(20).cloned().collect();
             match cli.output {
-                OutputFormat::Table => println!("{}", crate::output::formatter::offerings_table(&display)),
-                _ => println!("{}", serde_json::to_string_pretty(&display)?),
+                OutputFormat::Table => {
+                    println!("{}", crate::output::formatter::offerings_table(&display))
+                }
+                OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&display)?),
+                OutputFormat::Csv => {
+                    print!("{}", crate::output::formatter::offerings_csv(&display)?)
+                }
             }
-            if offerings.len() > 20 {
-                eprintln!("... and {} more. Use `courses filter` to narrow down.", offerings.len() - 20);
+            if sections.len() > 20 {
+                eprintln!(
+                    "... and {} more. Use `courses filter` to narrow down.",
+                    sections.len() - 20
+                );
             }
             Ok(())
         }
@@ -68,7 +92,10 @@ pub async fn run(cmd: &CoursesCommands, cli: &Cli) -> anyhow::Result<()> {
         } => {
             let offerings = repo.list_offerings(term)?;
             if offerings.is_empty() {
-                eprintln!("No cached offerings for term {}. Run `courses offerings --term {}` first.", term, term);
+                eprintln!(
+                    "No cached offerings for term {}. Run `courses offerings --term {}` first.",
+                    term, term
+                );
                 return Ok(());
             }
             let params = analysis::filter::FilterParams {
@@ -96,63 +123,79 @@ pub async fn run(cmd: &CoursesCommands, cli: &Cli) -> anyhow::Result<()> {
                 cross: *cross,
                 sdgs: sdgs.clone(),
             };
-            let filtered = analysis::filter::apply_filters(&offerings, &params);
-            eprintln!("{} results (from {} total).", filtered.len(), offerings.len());
+            let filtered_rows = analysis::filter::apply_section_filters(&offerings, &params);
+            let filtered = crate::storage::repo::merge_offering_rows(&filtered_rows);
+            eprintln!(
+                "{} section(s) (from {} raw assignment rows).",
+                filtered.len(),
+                offerings.len()
+            );
             match cli.output {
                 OutputFormat::Table => {
                     println!("{}", crate::output::formatter::offerings_table(&filtered));
                 }
                 OutputFormat::Json => {
-                    println!("{}", serde_json::to_string_pretty(&filtered)?);
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(
+                            &crate::output::formatter::offerings_summary_json(&filtered)
+                        )?
+                    );
                 }
                 OutputFormat::Csv => {
-                    // CSV fallback to JSON for now
-                    println!("{}", serde_json::to_string_pretty(&filtered)?);
+                    print!("{}", crate::output::formatter::offerings_csv(&filtered)?);
                 }
             }
             Ok(())
         }
         CoursesCommands::Conflicts { term } => {
-            let profile = repo.get_profile()?;
-            let dept_code = profile.as_ref().and_then(|p| p.dept_code.as_deref());
-            let planned = repo.get_planned_courses(term, dept_code)?;
+            let planned = repo.get_planned_courses(term)?;
 
             if planned.is_empty() {
-                eprintln!("No planned courses for term {}. Add courses with `shortlist add` first.", term);
+                eprintln!(
+                    "No planned courses for term {}. Add courses with `shortlist add` first.",
+                    term
+                );
                 return Ok(());
             }
 
             let report = analysis::conflict::detect_conflicts(&planned);
-            let required_count = planned.iter().filter(|o| o.category == "必修").count();
-            let shortlist_count = planned.len() - required_count;
-
-            eprintln!("Planned courses: {} ({} required + {} shortlisted)",
-                planned.len(), required_count, shortlist_count);
+            eprintln!("Planned courses: {} shortlisted section(s)", planned.len());
 
             if report.conflict_count == 0 {
                 eprintln!("No conflicts found.");
             } else {
                 eprintln!();
-                eprintln!("WARNING: {} conflict(s) found (advisory only, not blocking):", report.conflict_count);
+                eprintln!(
+                    "WARNING: {} conflict(s) found (advisory only, not blocking):",
+                    report.conflict_count
+                );
                 for pair in &report.pairs {
                     let a = planned.iter().find(|o| o.code == pair.course_a);
                     let b = planned.iter().find(|o| o.code == pair.course_b);
                     let a_name = a.map(|o| o.name.as_str()).unwrap_or("?");
                     let b_name = b.map(|o| o.name.as_str()).unwrap_or("?");
-                    println!("  {} ({}) <-> {} ({})  [{}]",
-                        pair.course_a, a_name, pair.course_b, b_name,
-                        pair.overlapping_slots.join(", "));
+                    println!(
+                        "  {} ({}) <-> {} ({})  [{}]",
+                        pair.course_a,
+                        a_name,
+                        pair.course_b,
+                        b_name,
+                        pair.overlapping_slots.join(", ")
+                    );
                 }
             }
             Ok(())
         }
-        CoursesCommands::Syllabus {
-            course_code,
-            term,
-        } => {
+        CoursesCommands::Syllabus { course_code, term } => {
             let _url = crate::connectors::cmap::CmapConnector::syllabus_url(term, course_code);
-            eprintln!("Downloading syllabus for {} (term {})...", course_code, term);
-            let result = crate::connectors::cmap::CmapConnector::download_syllabus(term, course_code).await?;
+            eprintln!(
+                "Downloading syllabus for {} (term {})...",
+                course_code, term
+            );
+            let result =
+                crate::connectors::cmap::CmapConnector::download_syllabus(term, course_code)
+                    .await?;
 
             if result.status != 200 {
                 anyhow::bail!("Syllabus download returned status {}", result.status);
@@ -168,31 +211,36 @@ pub async fn run(cmd: &CoursesCommands, cli: &Cli) -> anyhow::Result<()> {
             Ok(())
         }
         CoursesCommands::Timetable { term } => {
-            let profile = repo.get_profile()?;
-            let dept_code = profile.as_ref().and_then(|p| p.dept_code.as_deref());
-            let planned = repo.get_planned_courses(term, dept_code)?;
+            let planned = repo.get_planned_courses(term)?;
 
             if planned.is_empty() {
-                eprintln!("No planned courses for term {}. Add courses with `shortlist add` first.", term);
+                eprintln!(
+                    "No planned courses for term {}. Add courses with `shortlist add` first.",
+                    term
+                );
                 return Ok(());
             }
 
-            let required_count = planned.iter().filter(|o| o.category == "必修").count();
-            let shortlist_count = planned.len() - required_count;
-
-            eprintln!("Timetable for term {} ({} required + {} shortlisted):", term, required_count, shortlist_count);
+            eprintln!(
+                "Timetable for term {} ({} shortlisted section(s)):",
+                term,
+                planned.len()
+            );
             eprintln!();
 
             // Parse all time slots into (day_idx, period, course) tuples
-            let mut grid: Vec<Vec<Vec<String>>> = vec![vec![vec![]; PERIODS.len()]; 7];
+            let mut grid: Vec<Vec<Vec<String>>> = vec![vec![vec![]; PERIOD_ORDER.len()]; 7];
 
             for o in &planned {
-                for slot in &o.time_slots {
-                    for (day_idx, period_idx) in parse_slot_to_grid(slot) {
-                        // Truncate name to fit column (Unicode-aware: CJK chars are double-width)
-                        let display_name = truncate_unicode(&o.name, 12);
-                        grid[day_idx][period_idx].push(display_name);
-                    }
+                for cell in expand_time_slots(&o.time_slots) {
+                    let Some(period_idx) = PERIOD_ORDER
+                        .iter()
+                        .position(|period| *period == cell.period)
+                    else {
+                        continue;
+                    };
+                    let display_name = truncate_unicode(&o.name, 12);
+                    grid[cell.day as usize - 1][period_idx].push(display_name);
                 }
             }
 
@@ -204,27 +252,34 @@ pub async fn run(cmd: &CoursesCommands, cli: &Cli) -> anyhow::Result<()> {
             println!();
 
             // Print each period row
-            for (pi, period) in PERIODS.iter().enumerate() {
+            for (pi, period) in PERIOD_ORDER.iter().enumerate() {
                 print!("{:<5}", period);
                 for day_col in &grid {
                     let cell = day_col[pi].join(", ");
                     let padded = pad_unicode(&cell, 16);
-                    print!(" {}", if cell.is_empty() { "·".to_string() } else { padded });
+                    print!(
+                        " {}",
+                        if cell.is_empty() {
+                            "·".to_string()
+                        } else {
+                            padded
+                        }
+                    );
                 }
                 println!();
             }
             Ok(())
         }
-        CoursesCommands::Plan { term, dry_run } => {
+        CoursesCommands::Plan { term, apply } => {
             let offerings = repo.list_offerings(term)?;
 
             if offerings.is_empty() {
-                eprintln!("No cached offerings for term {}. Run `courses offerings --term {}` first.", term, term);
+                eprintln!(
+                    "No cached offerings for term {}. Run `courses offerings --term {}` first.",
+                    term, term
+                );
                 return Ok(());
             }
-
-            let profile = repo.get_profile()?;
-            let dept_code = profile.as_ref().and_then(|p| p.dept_code.as_deref());
 
             eprintln!("=== CourseApe Auto-Plan for term {} ===", term);
             eprintln!();
@@ -247,21 +302,37 @@ pub async fn run(cmd: &CoursesCommands, cli: &Cli) -> anyhow::Result<()> {
             let shortlist_codes = repo.list_shortlist(term)?;
             for fc in &failed_courses {
                 // Match by name: exact match first, then contains
-                let matched = offerings.iter().find(|o| o.name == fc.name)
-                    .or_else(|| offerings.iter().find(|o| {
-                        o.name.contains(fc.name.as_str()) || fc.name.contains(o.name.as_str())
-                    }));
+                let matched = (!fc.code.is_empty())
+                    .then(|| {
+                        offerings
+                            .iter()
+                            .find(|o| o.course_code == fc.code || o.code == fc.code)
+                    })
+                    .flatten()
+                    .or_else(|| offerings.iter().find(|o| o.name == fc.name))
+                    .or_else(|| {
+                        offerings.iter().find(|o| {
+                            o.name.contains(fc.name.as_str()) || fc.name.contains(o.name.as_str())
+                        })
+                    });
                 if let Some(offering) = matched {
                     retake_matched += 1;
                     let in_shortlist = shortlist_codes.contains(&offering.code);
                     let tag = if in_shortlist { " [已加入]" } else { "" };
-                    eprintln!("  {} ({}) -> {} {} | {}cr | slots: {} | {}/{}{}",
-                        fc.name, fc.term, offering.code, offering.name, offering.credits,
+                    eprintln!(
+                        "  {} ({}) -> {} {} | {}cr | slots: {} | {}/{}{}",
+                        fc.name,
+                        fc.term,
+                        offering.code,
+                        offering.name,
+                        offering.credits,
                         offering.time_slots.join(", "),
-                        offering.remaining.unwrap_or(-1), offering.max_capacity.unwrap_or(-1),
-                        tag);
+                        offering.remaining.unwrap_or(-1),
+                        offering.max_capacity.unwrap_or(-1),
+                        tag
+                    );
 
-                    if !*dry_run && !in_shortlist {
+                    if *apply && !in_shortlist {
                         let _ = repo.add_to_shortlist(&offering.code, term)?;
                     }
                 } else {
@@ -273,46 +344,38 @@ pub async fn run(cmd: &CoursesCommands, cli: &Cli) -> anyhow::Result<()> {
             }
             eprintln!();
 
-            // Step 4: Show required courses for dept
-            if let Some(dept) = dept_code {
-                let required: Vec<_> = offerings.iter()
-                    .filter(|o| o.dept_code == dept && o.category == "必修")
-                    .collect();
-                let shortlist_codes = repo.list_shortlist(term)?;
-
-                eprintln!("該系必修課程（本學期開設）：");
-                for o in &required {
-                    let in_shortlist = shortlist_codes.contains(&o.code);
-                    let tag = if in_shortlist { " [備選]" } else { "" };
-                    eprintln!("  {} | {} | {}cr | slots: {} | {}/{}{}",
-                        o.code, o.name, o.credits, o.time_slots.join(", "),
-                        o.remaining.unwrap_or(-1), o.max_capacity.unwrap_or(-1), tag);
-                }
-                eprintln!();
-            }
+            eprintln!("未自動納入全系必修；學生適用必修需由修業辦法分析結果確認。");
+            eprintln!();
 
             // Step 5: Summary
             let shortlist = repo.list_shortlist(term)?;
-            let planned = repo.get_planned_courses(term, dept_code)?;
+            let planned = repo.get_planned_courses(term)?;
             let report = crate::analysis::conflict::detect_conflicts(&planned);
 
             eprintln!("=== 摘要 ===");
-            eprintln!("需重修：{} 門（{} 門本學期有開課）", failed_courses.len(), retake_matched);
+            eprintln!(
+                "需重修：{} 門（{} 門本學期有開課）",
+                failed_courses.len(),
+                retake_matched
+            );
             eprintln!("備選清單：{} 門", shortlist.len());
             if report.conflict_count > 0 {
                 eprintln!("衝堂警告：{} 組（僅提示，不阻擋）", report.conflict_count);
             } else {
                 eprintln!("衝堂：無");
             }
-            if *dry_run {
-                eprintln!("[dry-run] 未修改備選清單");
+            if *apply {
+                eprintln!("已套用推薦至備選清單");
+            } else {
+                eprintln!("僅顯示推薦；加上 --apply 才會修改備選清單");
             }
             Ok(())
         }
         CoursesCommands::History { student_id } => {
             // Determine enrollment year from student ID or profile
             let profile = repo.get_profile()?;
-            let sid = student_id.clone()
+            let sid = student_id
+                .clone()
                 .or_else(|| profile.as_ref().map(|p| p.student_id.clone()))
                 .unwrap_or_default();
 
@@ -358,6 +421,10 @@ pub async fn run(cmd: &CoursesCommands, cli: &Cli) -> anyhow::Result<()> {
                     match fetch_offerings_from_api(&term).await {
                         Ok(offerings) => {
                             let count = offerings.len();
+                            if count == 0 {
+                                eprintln!("  {} (尚未發布)", term);
+                                continue;
+                            }
                             repo.upsert_offerings(&term, &offerings)?;
                             eprintln!("  {} ({} 筆)", term, count);
                             total_synced += count;
@@ -371,57 +438,19 @@ pub async fn run(cmd: &CoursesCommands, cli: &Cli) -> anyhow::Result<()> {
             }
 
             eprintln!();
-            eprintln!("完成！同步 {} 個學期，共 {} 筆開課資料。", terms_synced, total_synced);
+            eprintln!(
+                "完成！同步 {} 個學期，共 {} 筆開課資料。",
+                terms_synced, total_synced
+            );
             eprintln!("這些資料將用於判斷已修課程的通識向度。");
             Ok(())
         }
     }
 }
 
-/// Parse a CYCU time slot code like "2-A", "4-123", "5-567" into grid indices.
-/// Returns multiple (day_index 0-6, period_index) for multi-period slots like "4-123".
-fn parse_slot_to_grid(slot: &str) -> Vec<(usize, usize)> {
-    let parts: Vec<&str> = slot.splitn(2, '-').collect();
-    if parts.len() != 2 { return vec![]; }
-    let day: usize = match parts[0].parse() {
-        Ok(d) if (1..=7).contains(&d) => d,
-        _ => return vec![],
-    };
-    let day_idx = day - 1;
-
-    let period_part = parts[1];
-    let mut result = Vec::new();
-    for ch in period_part.chars() {
-        let period_idx = match ch {
-            '1' => Some(0),
-            '2' => Some(1),
-            '3' => Some(2),
-            '4' => Some(3),
-            'A' => Some(4),
-            'B' => Some(5),
-            '5' => Some(6),
-            '6' => Some(7),
-            '7' => Some(8),
-            '8' => Some(9),
-            'C' => Some(10),
-            'D' => Some(11),
-            'E' => Some(12),
-            'F' => Some(13),
-            'G' => Some(14),
-            _ => None,
-        };
-        if let Some(pi) = period_idx {
-            result.push((day_idx, pi));
-        }
-    }
-    result
-}
-
 /// Display width of a string (CJK chars = 2, ASCII = 1).
 fn unicode_display_width(s: &str) -> usize {
-    s.chars().map(|c| {
-        if c.is_ascii() { 1 } else { 2 }
-    }).sum()
+    s.chars().map(|c| if c.is_ascii() { 1 } else { 2 }).sum()
 }
 
 /// Truncate string to max display width, appending ".." if truncated.
@@ -451,23 +480,23 @@ fn pad_unicode(s: &str, target_width: usize) -> String {
 }
 
 /// Fetch course offerings from iTouch courseQuery API.
-pub async fn fetch_offerings_from_api(term: &str) -> anyhow::Result<Vec<crate::domain::course_offering::CourseOffering>> {
-    let session = crate::auth::session::Session::load()?.ok_or(
-        crate::error::CourseapeError::NotLoggedIn
-    )?;
+pub async fn fetch_offerings_from_api(
+    term: &str,
+) -> anyhow::Result<Vec<crate::domain::course_offering::CourseOffering>> {
+    let session =
+        crate::auth::session::Session::load()?.ok_or(crate::error::CourseapeError::NotLoggedIn)?;
 
     eprintln!("Querying iTouch courseQuery API for term {}...", term);
-    let json = crate::connectors::elective::CourseQueryConnector::query_offerings(&session.cookie, term).await?;
+    let json =
+        crate::connectors::elective::CourseQueryConnector::query_offerings(&session.cookie, term)
+            .await?;
 
-    // Save snapshot
+    // Validate every row before marking the response as a fresh snapshot.
+    let offerings = crate::connectors::elective::parse_offerings(&json)?;
     let body = serde_json::to_string(&json)?;
-    let (hash, _) = storage::snapshot::SnapshotArchive::save(
-        &format!("offerings_{}", term),
-        body.as_bytes(),
-    )?;
+    let (hash, _) =
+        storage::snapshot::SnapshotArchive::save(&format!("offerings_{}", term), body.as_bytes())?;
     eprintln!("CourseQuery response saved (hash: {}...).", &hash[..16]);
 
-    // Parse offerings
-    let offerings = crate::connectors::elective::parse_offerings(&json)?;
     Ok(offerings)
 }

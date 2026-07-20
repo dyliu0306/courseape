@@ -1,5 +1,6 @@
-use anyhow::Context;
 use crate::connectors::ConnectorResult;
+use anyhow::Context;
+use url::Url;
 
 const LOGIN_URL: &str = "https://itouch.cycu.edu.tw/active_system/login/login2.jsp?a=b";
 const GRADE_URL: &str = "https://itouch.cycu.edu.tw/active_system/quary/s_grade.jsp";
@@ -9,15 +10,15 @@ pub struct ItouchConnector;
 impl ItouchConnector {
     /// Login to iTouch and return (cookie_string, login_token).
     /// Follows redirects manually to capture loginToken from any response.
-    pub async fn login(student_id: &str, password: &str) -> anyhow::Result<(String, Option<String>)> {
+    pub async fn login(
+        student_id: &str,
+        password: &str,
+    ) -> anyhow::Result<(String, Option<String>)> {
         let client = reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
             .build()?;
 
-        let params = [
-            ("UserNm", student_id),
-            ("UserPasswd", password),
-        ];
+        let params = [("UserNm", student_id), ("UserPasswd", password)];
 
         // Step 1: POST to login endpoint
         let resp = client
@@ -34,17 +35,19 @@ impl ItouchConnector {
         collect_cookies_from_response(&resp, &mut all_cookies);
 
         // Step 2: Follow redirects manually
-        let mut next_url = resp.headers()
+        let mut next_url = resp
+            .headers()
             .get("location")
             .and_then(|v| v.to_str().ok())
-            .map(|s| resolve_url(LOGIN_URL, s));
+            .map(|s| resolve_url(LOGIN_URL, s))
+            .transpose()?;
 
         let mut depth = 0;
         while let Some(ref url) = next_url {
             if depth >= 5 || url.is_empty() {
                 break;
             }
-            eprintln!("  Redirect[{}]: {}...", depth, &url[..url.len().min(60)]);
+            eprintln!("  Redirect[{}]: approved iTouch path", depth);
 
             let cookie_header = build_cookie_header(&all_cookies);
 
@@ -57,13 +60,15 @@ impl ItouchConnector {
             match redirect_resp {
                 Ok(r) => {
                     collect_cookies_from_response(&r, &mut all_cookies);
-                    next_url = r.headers()
+                    next_url = r
+                        .headers()
                         .get("location")
                         .and_then(|v| v.to_str().ok())
-                        .map(|s| resolve_url(url, s));
+                        .map(|s| resolve_url(url, s))
+                        .transpose()?;
                 }
-                Err(e) => {
-                    eprintln!("    Redirect error: {}", e);
+                Err(_) => {
+                    eprintln!("    Redirect request failed");
                     break;
                 }
             }
@@ -71,7 +76,8 @@ impl ItouchConnector {
         }
 
         // Extract loginToken
-        let login_token = all_cookies.iter()
+        let login_token = all_cookies
+            .iter()
             .find(|(name, _)| name == "loginToken")
             .map(|(_, val)| val.replace("s%3A", "").replace("%3A", ":"))
             .filter(|s| !s.is_empty());
@@ -83,11 +89,15 @@ impl ItouchConnector {
             .collect::<Vec<_>>()
             .join("; ");
 
-        if cookie.is_empty() && !status.is_success() {
+        if cookie.is_empty() {
             anyhow::bail!(
                 "Login failed with status {}. Check credentials.",
                 status.as_u16()
             );
+        }
+
+        if !Self::validate_session(&cookie).await? {
+            anyhow::bail!("Login failed. iTouch did not accept the authenticated session.");
         }
 
         Ok((cookie, login_token))
@@ -118,6 +128,44 @@ impl ItouchConnector {
             elapsed_ms: 0,
         })
     }
+
+    pub async fn validate_session(cookie: &str) -> anyhow::Result<bool> {
+        if cookie.trim().is_empty() {
+            return Ok(false);
+        }
+        let result = Self::fetch_grades(cookie).await?;
+        if result.status != 200 || result.body_bytes.is_empty() {
+            return Ok(false);
+        }
+        Ok(is_authenticated_grade_body(&result.body_bytes))
+    }
+}
+
+pub fn is_authenticated_grade_body(body: &[u8]) -> bool {
+    if body.is_empty() {
+        return false;
+    }
+    let body = String::from_utf8_lossy(body).to_lowercase();
+    let rejected = body.contains("log in")
+        || body.contains("login2.jsp")
+        || body.contains("loginfail")
+        || body.contains("name=\"usernm\"")
+        || body.contains("name='usernm'")
+        || body.contains("登入超時")
+        || body.contains("重新登入");
+    let table = body.contains("<table") || body.contains("<td");
+    let grade_marker = [
+        "歷年成績",
+        "學年度",
+        "學分",
+        "及格",
+        "不及格",
+        "停修",
+        "查無",
+    ]
+    .iter()
+    .any(|marker| body.contains(marker));
+    !rejected && table && grade_marker
 }
 
 /// Collect cookie name=value pairs from Set-Cookie headers.
@@ -155,27 +203,35 @@ fn build_cookie_header(cookies: &[(String, String)]) -> String {
 }
 
 /// Resolve a possibly-relative URL against a base URL.
-fn resolve_url(base: &str, relative: &str) -> String {
-    if relative.starts_with("http://") || relative.starts_with("https://") {
-        return relative.to_string();
+fn resolve_url(base: &str, relative: &str) -> anyhow::Result<String> {
+    let target = Url::parse(base)?.join(relative)?;
+    if target.scheme() != "https" || target.host_str() != Some("itouch.cycu.edu.tw") {
+        anyhow::bail!("Rejected login redirect outside approved iTouch host");
     }
-    // Extract scheme + host from base
-    if let Some(scheme_end) = base.find("://") {
-        let after_scheme = &base[scheme_end + 3..];
-        if let Some(host_end) = after_scheme.find('/') {
-            let host = &base[..scheme_end + 3 + host_end];
-            if relative.starts_with('/') {
-                return format!("{}{}", host, relative);
-            } else {
-                let base_path = &base[scheme_end + 3 + host_end..];
-                let parent = if let Some(last_slash) = base_path.rfind('/') {
-                    &base_path[..last_slash + 1]
-                } else {
-                    "/"
-                };
-                return format!("{}{}{}", host, parent, relative);
-            }
-        }
+    Ok(target.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn redirect_stays_on_itouch_https() {
+        assert!(resolve_url(LOGIN_URL, "/active_system/index.jsp").is_ok());
+        assert!(resolve_url(LOGIN_URL, "https://attacker.example/collect").is_err());
+        assert!(resolve_url(LOGIN_URL, "http://itouch.cycu.edu.tw/unsafe").is_err());
+        assert!(resolve_url(LOGIN_URL, "https://itouch.cycu.edu.tw.attacker.example/").is_err());
     }
-    relative.to_string()
+
+    #[test]
+    fn rejects_expired_grade_page() {
+        let body = "<script>alert('登入超時！請重新登入。');window.location.href='/active_system/login/loginfailt.jsp';</script>";
+        assert!(!is_authenticated_grade_body(body.as_bytes()));
+        assert!(!is_authenticated_grade_body(
+            "<html>系統維護中</html>".as_bytes()
+        ));
+        assert!(is_authenticated_grade_body(
+            "<html><table><td>歷年成績</td></table></html>".as_bytes()
+        ));
+    }
 }

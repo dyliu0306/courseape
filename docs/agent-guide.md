@@ -56,7 +56,8 @@ CLI 驗證並保存結果
 ```json
 {
   "logged_in": true,
-  "profile_set": true,
+  "profile_exists": true,
+  "profile_complete": true,
   "profile": { "student_id": "***", "dept_code": "5400B", "enroll_year": 112 },
   "departments_synced": true,
   "requirements_downloaded": true,

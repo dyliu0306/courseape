@@ -1,6 +1,6 @@
 [package]
 name = "courseape"
-version = "0.2.1"
+version = "0.3.1"
 edition = "2021"
 description = "CYCU course-planning CLI: graduation analysis, course browsing, conflict detection"
 license = "PolyForm-Noncommercial-1.0.0"
@@ -24,6 +24,7 @@ sha2 = "0.10"
 hex = "0.4"
 rusqlite = { version = "0.32", features = ["bundled"] }
 comfy-table = "7"
+csv = "1"
 scraper = "0.22"
 regex = "1"
 url = "2"

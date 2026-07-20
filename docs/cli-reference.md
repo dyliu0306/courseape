@@ -9,11 +9,7 @@
 | 選項 | 說明 | 預設值 |
 |------|------|--------|
 | `--output table\|json\|csv` | 輸出格式 | `table` |
-| `--redact-personal` | 隱藏個資 | 開啟 |
 | `--no-redact-personal` | 顯示完整個資 | - |
-| `--offline` | 離線模式，只用本地快取 | 關閉 |
-| `--verbose` | 顯示除錯資訊 | 關閉 |
-| `--silent` | 靜默模式 | 關閉 |
 
 ## Agent 高階命令
 
@@ -101,6 +97,7 @@ courseape agent refresh
 |------|------|
 | `courseape profile show` | 查看個人資料 |
 | `courseape profile edit` | 修改入學年度、系所、學制 |
+| `courseape profile set --department "資管系"` | 以名稱確定性設定系所 |
 
 ## 資料同步
 
@@ -183,6 +180,8 @@ courseape courses filter --term 1151 --dept 5400B --type 必修 --credit 3
 | `courseape data export --scope offerings` | 匯出歷史開課 |
 | `courseape data import --scope grades --file <檔案>` | 匯入 AI 分析成績 |
 | `courseape data purge` | 清除所有快取 |
+
+`data export --scope profile` 預設遮罩學號；只有明確加入 `--no-redact-personal` 才會輸出完整學號。
 
 ## Skills
 

@@ -11,9 +11,20 @@
 
 ## 安裝
 
-### 1. 安裝 CourseApe Skill（讓 AI Agent 能使用）
+### 1. 安裝 CLI
 
-在你的 AI Agent 環境中執行：
+```
+npm install -g @dyliu0306/courseape
+courseape --version
+```
+
+> 需要 [Node.js](https://nodejs.org/) v18+。安裝時一路按「下一步」即可。
+
+如果 npm 不可用，也可以從 [GitHub Releases](https://github.com/dyliu0306/courseape/releases) 下載對應平台的 binary。Windows x64 使用 `courseape-win32-x64.exe`。
+
+### 2. 安裝 Agent Skill
+
+CLI 安裝完成後，在你的 AI Agent 環境中執行：
 
 ```
 courseape skills install --all
@@ -27,15 +38,7 @@ courseape skills install opencode
 courseape skills install codex
 ```
 
-### 2. 安裝 CLI（Skill 的後端引擎）
-
-```
-npm install -g @dyliu0306/courseape
-```
-
-> 需要 [Node.js](https://nodejs.org/) v18+。安裝時一路按「下一步」即可。
-
-## 30 秒 Quick Start
+## Quick Start
 
 安裝完成後，在 AI Agent 裡說：
 
@@ -79,13 +82,13 @@ Agent 會自動：
 |------|----------|
 | 帳密 | 系統鑰匙圈，不出現在任何檔案 |
 | 成績 | 本機 SQLite 資料庫 |
-| AI 分析 | 預設去識別化（隱藏學號、姓名） |
-| 網路 | 只連學校伺服器（itouch.cycu.edu.tw） |
+| AI 分析 | CLI 預設遮罩個資；若 Agent 將資料送給外部 AI，仍受該 Agent 服務的隱私政策約束 |
+| 網路 | CourseApe 只連 CYCU 服務：iTouch 與 cmap；npm 只在安裝／更新時連線 |
 
 ## 限制
 
 - 成績分析需要 AI Agent 讀取 PDF，準確度取決於 PDF 格式與 Agent 能力
-- 課程資料來自學校系統，非即時更新
+- 課程資料來自學校系統，非即時更新；若學期尚未發布開課資料，規劃會回報 unavailable
 - 通識向度判斷依賴歷史開課資料的 `OP_TYPE` 欄位，部分課程可能缺失
 - 本工具為非官方開源專案，與中原大學無關
 
@@ -95,7 +98,20 @@ Agent 會自動：
 
 ## 進階使用
 
-- [CLI 完整參考](docs/cli-reference.md) — 所有低階命令與篩選條件
-- [Agent 指南](docs/agent-guide.md) — Agent 支援範圍與故障排除
-- [隱私政策](docs/privacy.md) — 帳密、session、成績與 Agent 資料邊界
-- [開發指南](CONTRIBUTING.md) — 建置、測試、發布流程
+- [CLI 完整參考](https://github.com/dyliu0306/courseape/blob/main/docs/cli-reference.md) — 所有低階命令與篩選條件
+- [Agent 指南](https://github.com/dyliu0306/courseape/blob/main/docs/agent-guide.md) — Agent 支援範圍與故障排除
+- [隱私政策](https://github.com/dyliu0306/courseape/blob/main/docs/privacy.md) — 帳密、session、成績與 Agent 資料邊界
+- [開發指南](https://github.com/dyliu0306/courseape/blob/main/CONTRIBUTING.md) — 建置、測試、發布流程
+
+## 更新
+
+```bash
+npm update -g @dyliu0306/courseape
+courseape --version
+```
+
+更新後若出現 platform package 錯誤，重新安裝：
+
+```bash
+npm install -g @dyliu0306/courseape
+```

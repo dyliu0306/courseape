@@ -25,14 +25,14 @@
 | 衝堂檢查 | `courseape courses conflicts --term 1151` | 必修自動納入 + 備選，僅警告 |
 | 課表 | `courseape courses timetable --term 1151` | 顯示課程名稱的週課表 |
 | 課綱 | `courseape courses syllabus <code> --term 1151` | 下載 CMAP PDF |
-| 自動規劃 | `courseape courses plan --term 1151` | 比對重修課程與開課，自動加入備選 |
+| 自動規劃 | `courseape courses plan --term 1151` | 比對重修課程與開課，預設只顯示候選；`--apply` 才加入備選 |
 | 匯出 | `courseape data export --scope <scope>` | profile/grades/grade-html/offerings/departments |
 | 匯入 | `courseape data import --scope grades --file <json>` | Agent 分析結果寫入 DB |
 | Skill | `courseape skills install <claude|codex|opencode>` | 安裝 Agent Skill（含 PDF Skill 前置檢查） |
 
 ### 安全特性
 - 帳密存於 OS keyring，不出現在檔案或日誌
-- `--redact-personal` 預設開啟，遮罩學號/姓名
+- 預設遮罩學號/姓名；`--no-redact-personal` 才顯示完整資料
 - AI 分析由 Agent Skill 執行，CLI 不內建 LLM
 - PDF Skill 安裝與執行雙重檢查
 - Cookie、JWT、loginToken 不進入日誌
@@ -104,7 +104,7 @@ cargo build --release
 
 檢查項目：
 - [ ] `npm/app/package.json` 的 `@dyliu0306` 已替換為實際 scope
-- [ ] `npm/package.json.tmpl` 的 `${node_pkg}` 變數正確
+- [ ] `scripts/package-platform.mjs` 產生正確的 platform package metadata
 - [ ] platform package 的 `os` 和 `cpu` 欄位正確
 - [ ] SHA256 checksum 在 release assets 中
 - [ ] `.github/workflows/publish.yml` 觸發條件正確
@@ -119,8 +119,8 @@ cargo build --release
 $env:CYCU_USERNAME = "學號"
 $env:CYCU_PASSWORD = "密碼"
 
-# 或先用 openape 儲存帳密
-openape login
+# 或由 CourseApe 寫入自己的 OS 鑰匙圈條目
+courseape credentials set
 ```
 
 #### 4.2 單元測試
@@ -138,7 +138,7 @@ cargo test
 - `redact::profile` — 學號遮罩
 - `auth::keyring` — 憑證序列化
 
-共 28 個 unit tests。
+測試數量會隨回歸案例增加；以 `cargo test --locked` 的實際結果為準。
 
 #### 4.3 整合測試（需網路）
 
@@ -184,7 +184,7 @@ courseape data import --scope grades --file test_grades.json
 courseape data export --scope grades
 
 # 9. 自動規劃
-courseape courses plan --term 1151 --dry-run
+courseape courses plan --term 1151
 courseape courses plan --term 1151
 
 # 10. Skill 安裝

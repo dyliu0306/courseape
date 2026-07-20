@@ -24,19 +24,21 @@ CourseApe 使用獨立的 OS 鑰匙圈條目（`courseape/cycu-itouch`）。
 
 ## Session
 
-- Session cookie 儲存在本機 `~/.local/share/courseape/`（Linux）或 `%APPDATA%\courseape\`（Windows）
+- Session cookie 儲存在獨立 OS 鑰匙圈條目 `courseape/cycu-itouch-session`
+- 舊版 `session.json` 會在讀取時遷移到鑰匙圈並刪除
 - 不會上傳到任何伺服器
 - 執行 `courseape logout` 可清除
 
 ## 成績與課程資料
 
-- 成績 HTML、修業辦法 PDF、開課資料均儲存在本機 SQLite 資料庫
+- SQLite 儲存 profile、系所、開課資料、分析成績與 requirements metadata
+- 原始成績 HTML、修業辦法 PDF、API snapshots 儲存在 snapshots 目錄
 - 路徑：`~/.local/share/courseape/courseape.db`（Linux）或 `%APPDATA%\courseape\courseape.db`（Windows）
 - 不會上傳到任何伺服器
 
 ## AI 分析
 
-- 預設啟用去識別化（`--redact-personal`）
+- 預設啟用去識別化
 - 去識別化會隱藏學號、姓名等個人資料
 - 使用 `--no-redact-personal` 可關閉，但不建議
 
@@ -66,7 +68,7 @@ courseape logout --clear-credentials
 | 資料 | 儲存位置 | 會上傳嗎 | 會分享給 Agent 嗎 |
 |------|----------|----------|-------------------|
 | 帳密 | 系統鑰匙圈 | 否 | 否 |
-| Session | 本機檔案 | 否 | 否 |
-| 成績 | 本機 SQLite | 否 | 是（去識別化後） |
+| Session | 系統鑰匙圈 | 否 | 否 |
+| 成績 | 本機 SQLite + HTML snapshot | 否 | 是（去識別化後） |
 | 修業辦法 PDF | 本機檔案 | 否 | 是 |
-| 開課清單 | 本機 SQLite | 否 | 是 |
+| 開課清單 | 本機 SQLite + API snapshot | 否 | 是 |

@@ -1,0 +1,30 @@
+{
+  "datas": [
+    {
+      "OP_CODE": "CE154M",
+      "CURS_CODE": "CE154",
+      "CURS_NM_C_S": "專題研究",
+      "TEACHER_CNAME": "林老師",
+      "IDCODE": "12630",
+      "OP_CREDIT": 2,
+      "OP_STDY": "必修",
+      "AUTHORITY_DEPT": "3100B",
+      "DEPT_CODE": "3131B",
+      "OP_TIME_1": "3-12",
+      "CLS_NAME_1": "工學101"
+    },
+    {
+      "OP_CODE": "CE154M",
+      "CURS_CODE": "CE154",
+      "CURS_NM_C_S": "專題研究",
+      "TEACHER_CNAME": "林老師",
+      "IDCODE": "12630",
+      "OP_CREDIT": 2,
+      "OP_STDY": "必修",
+      "AUTHORITY_DEPT": "3100B",
+      "DEPT_CODE": "3131B",
+      "OP_TIME_1": "3-34",
+      "CLS_NAME_1": "工學102"
+    }
+  ]
+}

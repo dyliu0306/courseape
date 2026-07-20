@@ -46,7 +46,11 @@ fn check_pdf_skill(platform_path: &std::path::Path) -> bool {
             if skill_md.exists() {
                 if let Ok(content) = std::fs::read_to_string(&skill_md) {
                     let lower = content.to_lowercase();
-                    if lower.contains("pdf") && (lower.contains("read") || lower.contains("parse") || lower.contains("extract")) {
+                    if lower.contains("pdf")
+                        && (lower.contains("read")
+                            || lower.contains("parse")
+                            || lower.contains("extract"))
+                    {
                         return true;
                     }
                 }
@@ -79,17 +83,24 @@ pub async fn run(cmd: &SkillsCommands, _cli: &Cli) -> anyhow::Result<()> {
                     .map(|(_, plat)| plat);
                 match found {
                     Some(plat) => targets.push(plat),
-                    None => anyhow::bail!("Unknown platform: {}. Supported: claude, codex, opencode", p),
+                    None => anyhow::bail!(
+                        "Unknown platform: {}. Supported: claude, codex, opencode",
+                        p
+                    ),
                 }
             } else {
-                anyhow::bail!("Specify a platform or use --all. Example: courseape skills install claude");
+                anyhow::bail!(
+                    "Specify a platform or use --all. Example: courseape skills install claude"
+                );
             }
 
             for plat in &targets {
                 // Check PDF Skill prerequisite
                 if !check_pdf_skill(&plat.path) {
                     eprintln!("ERROR: PDF Skill not found in {}.", plat.name);
-                    eprintln!("CourseApe requires a PDF reading/parsing Skill to be installed first.");
+                    eprintln!(
+                        "CourseApe requires a PDF reading/parsing Skill to be installed first."
+                    );
                     eprintln!();
                     eprintln!("Install a PDF Skill first, then retry:");
                     eprintln!("  npx skills add <pdf-skill-package>");

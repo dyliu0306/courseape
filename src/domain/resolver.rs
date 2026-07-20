@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use crate::domain::department::Department;
+use serde::{Deserialize, Serialize};
 
 /// Confidence level for a department resolution match.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -72,7 +72,9 @@ pub fn resolve_department(query: &str, departments: &[Department]) -> Vec<DeptCa
         // 4. Normalized match (remove spaces, parentheses, common suffixes)
         let normalized_dept = normalize_dept_name(&dept.name);
         let normalized_query = normalize_dept_name(query_trimmed);
-        if normalized_dept.contains(&normalized_query) || normalized_query.contains(&normalized_dept) {
+        if normalized_dept.contains(&normalized_query)
+            || normalized_query.contains(&normalized_dept)
+        {
             candidates.push(DeptCandidate {
                 dept_code: dept.dept_code.clone(),
                 name: dept.name.clone(),
@@ -116,7 +118,17 @@ fn normalize_dept_name(name: &str) -> String {
 
 /// Strip common suffixes from department query (系, 所, 班, etc.)
 fn strip_query_suffix(query: &str) -> &str {
-    let suffixes = ["學系", "學士班", "碩士班", "博士班", "研究所", "碩博士班", "系", "所", "班"];
+    let suffixes = [
+        "學系",
+        "學士班",
+        "碩士班",
+        "博士班",
+        "研究所",
+        "碩博士班",
+        "系",
+        "所",
+        "班",
+    ];
     for suffix in &suffixes {
         if let Some(stripped) = query.strip_suffix(suffix) {
             return stripped;
@@ -193,7 +205,11 @@ mod tests {
     use super::*;
 
     fn make_dept(code: &str, name: &str) -> Department {
-        Department { dept_code: code.to_string(), name: name.to_string(), year: 114 }
+        Department {
+            dept_code: code.to_string(),
+            name: name.to_string(),
+            year: 114,
+        }
     }
 
     #[test]
@@ -217,7 +233,10 @@ mod tests {
         let depts = vec![make_dept("5400B", "資訊管理學系")];
         let result = resolve_department("資訊管理", &depts);
         assert_eq!(result.len(), 1);
-        assert!(matches!(result[0].confidence, MatchConfidence::High | MatchConfidence::Medium));
+        assert!(matches!(
+            result[0].confidence,
+            MatchConfidence::High | MatchConfidence::Medium
+        ));
     }
 
     #[test]
@@ -225,7 +244,10 @@ mod tests {
         let depts = vec![make_dept("5400B", "資訊管理學系")];
         let result = resolve_department("資訊管理", &depts);
         assert_eq!(result.len(), 1);
-        assert!(matches!(result[0].confidence, MatchConfidence::High | MatchConfidence::Medium));
+        assert!(matches!(
+            result[0].confidence,
+            MatchConfidence::High | MatchConfidence::Medium
+        ));
     }
 
     #[test]

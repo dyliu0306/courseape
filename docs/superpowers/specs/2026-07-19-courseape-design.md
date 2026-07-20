@@ -134,7 +134,7 @@ courseape/
 │   │   ├── package.json
 │   │   ├── tsconfig.json
 │   │   └── src/index.ts
-│   └── package.json.tmpl
+│   └── scripts/package-platform.mjs
 ├── .github/
 │   └── workflows/
 │       └── publish.yml
@@ -152,13 +152,7 @@ courseape/
 | Flag | Description | Default |
 |------|-------------|---------|
 | `--output <format>` | Output format: `json`, `csv`, `table` | `table` |
-| `--redact-personal` | Remove personal identifiers from output | `true` |
 | `--no-redact-personal` | Include personal identifiers | (override) |
-| `--offline` | Use only cached data; do not contact APIs | `false` |
-| `--config <path>` | Override config file path | OS default |
-| `--session <path>` | Override session storage path | OS default |
-| `--verbose` | Enable debug logging | `false` |
-| `--silent` | Suppress all stderr output | `false` |
 
 ### 3.2 Commands
 
@@ -166,7 +160,7 @@ courseape/
 
 ```bash
 courseape login
-  # Read student_id + password from OS keyring (openape/moodle-auto-login).
+  # Read student_id + password from CourseApe's OS keyring entry.
   # If absent, prompt interactively (hidden input).
   # POST to itouch login2.jsp.
   # Save CourseApe session cookie to local session store.
@@ -182,10 +176,9 @@ courseape logout
 
 courseape credentials set
   # Interactive hidden input for student_id + password.
-  # Display warning: "This will update the shared OS keyring entry used by openape."
-  # Require explicit confirmation (y/N).
-  # Write to keyring entry: service=openape, account=moodle-auto-login.
-  # Clear CourseApe session; re-login to validate new credentials.
+  # Validate the replacement credentials before changing stored state.
+  # Write to keyring entry: service=courseape, account=cycu-itouch.
+  # Replace the CourseApe session only after successful login.
 ```
 
 #### Profile
@@ -275,24 +268,24 @@ courseape skills show
 
 ### 4.1 Keyring Strategy
 
-CourseApe reuses the same OS keyring entry as `openape`:
+CourseApe uses dedicated OS keyring entries and is independent from `openape`:
 
 | Field | Value |
 |-------|-------|
-| Service | `openape` |
-| Account | `moodle-auto-login` |
+| Service | `courseape` |
+| Account | `cycu-itouch` |
 | Payload | JSON: `[student_id, password]` |
 
 This means:
-- A student who already uses `openape` does not need to re-enter credentials.
-- `courseape credentials set` updates the same entry; both tools are affected.
-- CourseApe never reads `openape`'s `.auth/storage-state.json`; it manages its own session independently.
+- CourseApe never reads or changes `openape` credentials or browser state.
+- `courseape credentials set` affects CourseApe only.
+- Session data uses the separate `courseape/cycu-itouch-session` keyring entry.
 
 ### 4.2 Session Management
 
 | Storage | Location | Content |
 |---------|----------|---------|
-| CourseApe session | OS app data dir / `session.json` | itouch cookie, login timestamp, expiry estimate |
+| CourseApe session | OS credential store | itouch cookie and login timestamp |
 | Keyring | OS credential store | `student_id`, `password` |
 | Profile | SQLite in app data dir | `dept_code`, `enroll_year`, `degree` |
 | Cache | SQLite + snapshot dir | API responses, PDFs, HTML, parsed results |
@@ -359,9 +352,9 @@ The catalog is stored as a versioned JSON file. Each entry records:
 
 CYCU uses codes like `2-A`, `4-1`, `5-2` where:
 - First digit = day of week (1=Mon ... 7=Sun)
-- Second part = period (`A`=1-2, `B`=3-4, `1`=1st, `2`=2nd, etc.)
+- Second part = independent period. Canonical order is `A,1,2,3,4,B,5,6,7,8,C,D,E,F,G`.
 
-The `time_slot` parser converts these to structured `TimeSlot { day, start_period, end_period }` for deterministic conflict comparison.
+The `time_slot` parser expands each code to exact `(day, period)` cells for deterministic conflict comparison. Letter periods never alias numeric periods.
 
 ## 6. Storage & Privacy
 
@@ -370,7 +363,7 @@ The `time_slot` parser converts these to structured `TimeSlot { day, start_perio
 | Class | Storage | Retention | Clearable by |
 |-------|---------|-----------|--------------|
 | Credentials | OS keyring | Until user deletes | `credentials set`, `logout --clear-credentials` |
-| Session cookie | App data / `session.json` | Until expiry or logout | `logout`, `data purge` |
+| Session cookie | OS credential store | Until expiry or logout | `logout`, `data purge` |
 | Profile | SQLite | Until user edits | `data purge` |
 | API cache | SQLite + snapshots | Until purge or TTL | `data purge` |
 | AI results | SQLite + snapshots | Until purge | `data purge` |
@@ -378,7 +371,7 @@ The `time_slot` parser converts these to structured `TimeSlot { day, start_perio
 
 ### 6.2 Redaction Rules
 
-When `--redact-personal` is active (default), the following are masked in all CLI output, work-packages, and Skill input:
+By default, the following are masked in all CLI output, work-packages, and Skill input:
 
 | Field | Redaction |
 |-------|-----------|
@@ -396,7 +389,7 @@ When `--redact-personal` is active (default), the following are masked in all CL
 - HTTP debug logs never contain passwords, cookies, JWTs, or loginTokens.
 - URL query parameters containing secrets are stripped before logging.
 - Snapshot filenames use content hashes, never secret values.
-- Cookie values are stored only in the CourseApe session file with restricted OS file permissions.
+- Cookie values are stored only in CourseApe's OS credential-store session entry.
 - No data is uploaded to any CourseApe-controlled server.
 - AI work-packages are generated locally and only transmitted to the user's chosen Agent endpoint.
 
@@ -484,7 +477,7 @@ fixtures/
 ### 8.3 Live Test Protocol
 
 Live smoke tests require `COURSEAPE_LIVE_TEST=1` environment variable. They:
-- Read credentials from the existing openape keyring entry.
+- Read credentials from CourseApe's dedicated keyring entry.
 - Execute a minimal sequence: login -> profile detect -> one API call -> logout.
 - Verify HTTP status, field names, field types, and count ranges.
 - Save only: status code, field schema, anonymized count, response hash, error category.
@@ -500,7 +493,7 @@ GitHub Actions workflow (mirrors openape's publish.yml):
 4. **Publish job**: Publish `@dyliu0306/courseape` (base) + platform packages to npm.
 5. **Release job**: Upload binaries + checksums to GitHub Release.
 
-Triggers: `release: [published]` and `workflow_dispatch`.
+Trigger: pushing an exact `v*.*.*` tag after the branch CI succeeds.
 
 ## 9. Versioning & Updates
 

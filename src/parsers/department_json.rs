@@ -8,7 +8,9 @@ pub fn parse_departments(json: &serde_json::Value, year: u32) -> anyhow::Result<
         .get("DEPT_list")
         .and_then(|v| v.as_array())
         .or_else(|| json.as_array()) // fallback: if already an array
-        .ok_or_else(|| anyhow::anyhow!("Expected JSON object with 'DEPT_list' array or a JSON array"))?;
+        .ok_or_else(|| {
+            anyhow::anyhow!("Expected JSON object with 'DEPT_list' array or a JSON array")
+        })?;
 
     let mut departments = Vec::new();
     for item in arr {

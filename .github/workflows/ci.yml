@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  rust:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+      - run: cargo test --locked
+      - run: cargo clippy --locked -- -D warnings
+      - run: cargo build --release --locked
+      - shell: bash
+        run: |
+          VERSION=$(node -p "require('./npm/app/package.json').version")
+          target/release/courseape.exe --version | grep "$VERSION"
+      - name: Smoke-test packed npm installation
+        shell: pwsh
+        run: |
+          $version = node -p "require('./npm/app/package.json').version"
+          npm ci --prefix npm/app
+          npm run build --prefix npm/app
+          New-Item -ItemType Directory -Path smoke | Out-Null
+          node scripts/package-platform.mjs $version win32 x64 target/release/courseape.exe smoke/platform
+          npm pack smoke/platform --pack-destination smoke
+          npm pack ./npm/app --pack-destination smoke
+          New-Item -ItemType Directory -Path smoke/prefix | Out-Null
+          npm install --prefix smoke/prefix --no-audit --no-fund "smoke/dyliu0306-courseape-$version.tgz" "smoke/dyliu0306-courseape-win32-x64-$version.tgz"
+          & smoke/prefix/node_modules/.bin/courseape.cmd --version | Select-String $version
+
+  npm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: npm
+          cache-dependency-path: npm/app/package-lock.json
+      - shell: bash
+        run: |
+          VERSION=$(node -p "require('./npm/app/package.json').version")
+          node scripts/verify-version.mjs "$VERSION"
+      - working-directory: npm/app
+        run: |
+          npm ci
+          npm run build
+          npm pack --dry-run

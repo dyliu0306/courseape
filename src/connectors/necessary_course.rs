@@ -1,5 +1,5 @@
-use anyhow::Context;
 use crate::connectors::ConnectorResult;
+use anyhow::Context;
 
 const BASE_URL: &str = "https://itouch.cycu.edu.tw/active_project/cycu2000h_03/necessaryCourse/mvc";
 
@@ -49,7 +49,10 @@ impl NecessaryCourseConnector {
     }
 
     /// Download graduation requirement PDF.
-    pub async fn download_requirement_pdf(year: u32, dept_code: &str) -> anyhow::Result<ConnectorResult> {
+    pub async fn download_requirement_pdf(
+        year: u32,
+        dept_code: &str,
+    ) -> anyhow::Result<ConnectorResult> {
         let url = Self::requirement_pdf_url(year, dept_code);
         let client = reqwest::Client::new();
 

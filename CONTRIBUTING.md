@@ -86,10 +86,11 @@ cargo test -- --nocapture    # 顯示 eprintln 輸出
 
 ## 發布流程
 
-1. 更新 `Cargo.toml` 版本號
-2. Commit & push
-3. 建立 GitHub Release（tag: `v0.x.x`）
-4. CI 自動：建置 6 平台 binary → 發布 npm → 上傳 GitHub Release
+1. 更新 `Cargo.toml`、`npm/app/package.json` 與 lockfile 版本號
+2. 執行 `node scripts/verify-version.mjs <version>`
+3. Commit & push
+4. 推送 semver tag（例如 `git push origin v0.3.1`）
+5. CI 先驗證、建置全部平台與 npm tarball，再集中發布 npm，最後建立 GitHub Release
 
 ## 架構決策
 

@@ -1,19 +1,20 @@
-use crate::domain::course_offering::CourseOffering;
 use crate::domain::conflict::{ConflictPair, ConflictReport};
+use crate::domain::course_offering::CourseOffering;
+use crate::parsers::time_slot::{expand_time_slots, TimeCell};
 
 /// Deterministic conflict detection: expand time slots to (day, period) sets and check overlap.
 pub fn detect_conflicts(offerings: &[CourseOffering]) -> ConflictReport {
     let mut pairs = Vec::new();
 
     // Pre-expand each offering's time slots into a set of (day, period) cells
-    let expanded: Vec<Vec<(u32, char)>> = offerings
+    let expanded: Vec<Vec<TimeCell>> = offerings
         .iter()
-        .map(|o| expand_slots(&o.time_slots))
+        .map(|o| expand_time_slots(&o.time_slots))
         .collect();
 
     for i in 0..offerings.len() {
         for j in (i + 1)..offerings.len() {
-            let overlapping_cells: Vec<(u32, char)> = expanded[i]
+            let overlapping_cells: Vec<TimeCell> = expanded[i]
                 .iter()
                 .filter(|c| expanded[j].contains(c))
                 .cloned()
@@ -22,7 +23,7 @@ pub fn detect_conflicts(offerings: &[CourseOffering]) -> ConflictReport {
                 // Build human-readable overlapping slot descriptions
                 let overlapping_slots: Vec<String> = overlapping_cells
                     .iter()
-                    .map(|(day, period)| format!("{}-{}", day, period))
+                    .map(|cell| format!("{}-{}", cell.day, cell.period))
                     .collect();
                 pairs.push(ConflictPair {
                     course_a: offerings[i].code.clone(),
@@ -38,23 +39,6 @@ pub fn detect_conflicts(offerings: &[CourseOffering]) -> ConflictReport {
     }
 }
 
-/// Expand CYCU time slot codes like "2-A", "4-123" into individual (day, period) cells.
-fn expand_slots(slots: &[String]) -> Vec<(u32, char)> {
-    let mut cells = Vec::new();
-    for slot in slots {
-        let parts: Vec<&str> = slot.splitn(2, '-').collect();
-        if parts.len() != 2 { continue; }
-        let day: u32 = match parts[0].parse() {
-            Ok(d) if (1..=7).contains(&d) => d,
-            _ => continue,
-        };
-        for ch in parts[1].chars() {
-            cells.push((day, ch));
-        }
-    }
-    cells
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -62,6 +46,8 @@ mod tests {
     fn offering(code: &str, slots: &[&str]) -> CourseOffering {
         CourseOffering {
             code: code.to_string(),
+            course_code: code.to_string(),
+            assignment_key: format!("test:{code}"),
             name: format!("Course {}", code),
             name_en: String::new(),
             teacher: "Teacher".to_string(),
@@ -116,7 +102,9 @@ mod tests {
         assert_eq!(report.pairs[0].course_a, "A");
         assert_eq!(report.pairs[0].course_b, "B");
         // "2-A" expands to (2, 'A')
-        assert!(report.pairs[0].overlapping_slots.contains(&"2-A".to_string()));
+        assert!(report.pairs[0]
+            .overlapping_slots
+            .contains(&"2-A".to_string()));
     }
 
     #[test]
