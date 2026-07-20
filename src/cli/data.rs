@@ -93,8 +93,25 @@ pub async fn run(cmd: &DataCommands, cli: &Cli) -> anyhow::Result<()> {
                         println!("{}", serde_json::to_string_pretty(&schedule)?);
                     }
                 }
+                "requirement-parsed" => {
+                    // Export parsed requirement JSON if cached
+                    let profile = repo.get_profile()?;
+                    let year = profile.as_ref().and_then(|p| p.enroll_year).unwrap_or(112);
+                    let dept = profile.as_ref().and_then(|p| p.dept_code.as_deref()).unwrap_or("");
+                    match repo.get_parsed_requirement_path(year, dept)? {
+                        Some(path) => {
+                            let content = std::fs::read_to_string(&path)?;
+                            println!("{}", content);
+                        }
+                        None => {
+                            eprintln!("No parsed requirement found for year {} dept {}.", year, dept);
+                            eprintln!("Run `courseape agent prepare graduation` first, then have Agent parse the PDF.");
+                            eprintln!("Import parsed result: courseape data import --scope requirement-parsed --file <path>");
+                        }
+                    }
+                }
                 _ => {
-                    anyhow::bail!("Unknown scope '{}'. Valid: profile, departments, grades, grade-html, offerings, schedule", scope);
+                    anyhow::bail!("Unknown scope '{}'. Valid: profile, departments, grades, grade-html, offerings, schedule, requirement-parsed", scope);
                 }
             }
             Ok(())
@@ -157,9 +174,33 @@ pub async fn run(cmd: &DataCommands, cli: &Cli) -> anyhow::Result<()> {
                         term_code
                     );
                 }
+                "requirement-parsed" => {
+                    // Import parsed requirement JSON for caching
+                    // Expected: { "year": 112, "dept_code": "5400B", "content": {...} }
+                    let value: serde_json::Value = serde_json::from_str(&json_str)?;
+                    let year = value["year"]
+                        .as_u64()
+                        .ok_or_else(|| anyhow::anyhow!("Missing 'year' field"))? as u32;
+                    let dept_code = value["dept_code"]
+                        .as_str()
+                        .ok_or_else(|| anyhow::anyhow!("Missing 'dept_code' field"))?;
+                    // Save JSON to fixed path in snapshot dir
+                    let (hash, path) = storage::snapshot::SnapshotArchive::save_fixed(
+                        &format!("req_parsed_{}_{}", year, dept_code),
+                        "json",
+                        json_str.as_bytes(),
+                    )?;
+                    repo.save_parsed_requirement(year, dept_code, &path.to_string_lossy())?;
+                    eprintln!(
+                        "Saved parsed requirement for {} {} (hash: {}...).",
+                        year,
+                        dept_code,
+                        &hash[..16]
+                    );
+                }
                 _ => {
                     anyhow::bail!(
-                        "Import scope '{}' not supported. Valid: grades, schedule",
+                        "Import scope '{}' not supported. Valid: grades, schedule, requirement-parsed",
                         scope
                     );
                 }

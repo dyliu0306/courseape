@@ -145,6 +145,7 @@ fn migrate(conn: &Connection) -> anyhow::Result<()> {
 
     migrate_analyzed_grades(&tx)?;
     migrate_offerings(&tx)?;
+    migrate_requirements(&tx)?;
     tx.commit()?;
     Ok(())
 }
@@ -210,6 +211,19 @@ fn migrate_offerings(conn: &Connection) -> anyhow::Result<()> {
         }
     }
 
+    Ok(())
+}
+
+fn migrate_requirements(conn: &Connection) -> anyhow::Result<()> {
+    // Add parsed_json_path column if it doesn't exist
+    let has_col: bool = conn.query_row(
+        "SELECT COUNT(*) FROM pragma_table_info('requirements') WHERE name='parsed_json_path'",
+        [],
+        |row| row.get::<_, i32>(0),
+    )? > 0;
+    if !has_col {
+        conn.execute_batch("ALTER TABLE requirements ADD COLUMN parsed_json_path TEXT NOT NULL DEFAULT ''")?;
+    }
     Ok(())
 }
 

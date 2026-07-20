@@ -291,6 +291,40 @@ fn normalize_status(s: &str) -> String {
         .collect::<String>()
 }
 
+/// Deduplicate retakes: for each course name, keep only the latest attempt.
+/// If the latest attempt is failed but an earlier attempt passed, keep the passed one.
+pub fn dedup_retakes(courses: Vec<CompletedCourse>) -> Vec<CompletedCourse> {
+    use std::collections::BTreeMap;
+    // Group by course name
+    let mut by_name: BTreeMap<String, Vec<CompletedCourse>> = BTreeMap::new();
+    for c in courses {
+        by_name.entry(c.name.clone()).or_default().push(c);
+    }
+    let mut result = Vec::new();
+    for (_name, mut entries) in by_name {
+        if entries.len() == 1 {
+            result.push(entries.into_iter().next().unwrap());
+            continue;
+        }
+        // Sort by term descending (latest first)
+        entries.sort_by(|a, b| b.term.cmp(&a.term));
+        // If latest is passed/withdrawn, keep it
+        if entries[0].status == "及格" || entries[0].status == "停修" {
+            result.push(entries.into_iter().next().unwrap());
+        } else {
+            // Latest is failed — check if any earlier attempt passed
+            let passed = entries.iter().find(|e| e.status == "及格");
+            if let Some(p) = passed {
+                result.push(p.clone());
+            } else {
+                // All failed — keep latest
+                result.push(entries.into_iter().next().unwrap());
+            }
+        }
+    }
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -353,5 +387,28 @@ mod tests {
         assert_eq!(course.name, "英語聽講(一)");
         assert_eq!(course.status, "不及格");
         assert_eq!(course.score, Some(58));
+    }
+
+    #[test]
+    fn test_dedup_retakes_keeps_passed() {
+        let courses = vec![
+            CompletedCourse { code: "".into(), name: "微積分".into(), credits: 3, status: "不及格".into(), term: "1121".into(), score: Some(45), category: "必修".into() },
+            CompletedCourse { code: "".into(), name: "微積分".into(), credits: 3, status: "及格".into(), term: "1131".into(), score: Some(72), category: "必修".into() },
+        ];
+        let result = dedup_retakes(courses);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].term, "1131");
+        assert_eq!(result[0].status, "及格");
+    }
+
+    #[test]
+    fn test_dedup_retakes_latest_failed_no_pass() {
+        let courses = vec![
+            CompletedCourse { code: "".into(), name: "物理".into(), credits: 3, status: "不及格".into(), term: "1121".into(), score: Some(50), category: "必修".into() },
+            CompletedCourse { code: "".into(), name: "物理".into(), credits: 3, status: "不及格".into(), term: "1131".into(), score: Some(30), category: "必修".into() },
+        ];
+        let result = dedup_retakes(courses);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].term, "1131"); // latest
     }
 }

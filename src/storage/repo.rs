@@ -274,6 +274,34 @@ impl<'a> Repository<'a> {
         Ok(rows.next()?.map(|row| row.get(0)).transpose()?)
     }
 
+    /// Save a parsed requirement JSON path and mark as parsed.
+    pub fn save_parsed_requirement(
+        &self,
+        year: u32,
+        dept_code: &str,
+        json_path: &str,
+    ) -> anyhow::Result<()> {
+        self.conn.execute(
+            "UPDATE requirements SET parsed = 1, parsed_json_path = ?1
+             WHERE year = ?2 AND dept_code = ?3",
+            (json_path, year, dept_code),
+        )?;
+        Ok(())
+    }
+
+    /// Get the parsed requirement JSON path if available.
+    pub fn get_parsed_requirement_path(
+        &self,
+        year: u32,
+        dept_code: &str,
+    ) -> anyhow::Result<Option<String>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT parsed_json_path FROM requirements WHERE year = ?1 AND dept_code = ?2 AND parsed = 1",
+        )?;
+        let mut rows = stmt.query([year.to_string(), dept_code.to_string()])?;
+        Ok(rows.next()?.map(|row| row.get(0)).transpose()?)
+    }
+
     // ── Shortlist ──────────────────────────────────────────────
 
     pub fn add_to_shortlist(&self, code: &str, term: &str) -> anyhow::Result<bool> {

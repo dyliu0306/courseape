@@ -318,8 +318,10 @@ pub async fn run(cmd: &CoursesCommands, cli: &Cli) -> anyhow::Result<()> {
             eprintln!("需重修課程（不及格/停修）：");
             let mut retake_matched = 0;
             let shortlist_codes = repo.list_shortlist(term)?;
+            let student_dept = repo.get_profile()?.and_then(|p| p.dept_code).unwrap_or_default();
             for fc in &failed_courses {
-                // Match by name: exact match first, then contains
+                // Match by name: exact match first, then contains.
+                // When multiple matches exist, prefer student's own department.
                 let matched = (!fc.code.is_empty())
                     .then(|| {
                         offerings
@@ -327,11 +329,15 @@ pub async fn run(cmd: &CoursesCommands, cli: &Cli) -> anyhow::Result<()> {
                             .find(|o| o.course_code == fc.code || o.code == fc.code)
                     })
                     .flatten()
-                    .or_else(|| offerings.iter().find(|o| o.name == fc.name))
                     .or_else(|| {
-                        offerings.iter().find(|o| {
+                        let exact: Vec<_> = offerings.iter().filter(|o| o.name == fc.name).collect();
+                        pick_best_section(&exact, &student_dept)
+                    })
+                    .or_else(|| {
+                        let partial: Vec<_> = offerings.iter().filter(|o| {
                             o.name.contains(fc.name.as_str()) || fc.name.contains(o.name.as_str())
-                        })
+                        }).collect();
+                        pick_best_section(&partial, &student_dept)
                     });
                 if let Some(offering) = matched {
                     retake_matched += 1;
@@ -525,4 +531,23 @@ pub async fn fetch_offerings_from_api(
     eprintln!("CourseQuery response saved (hash: {}...).", &hash[..16]);
 
     Ok(offerings)
+}
+
+/// Pick the best section from a list of matching offerings.
+/// Prefers sections where dept_code matches the student's department.
+fn pick_best_section<'a>(
+    candidates: &[&'a crate::domain::course_offering::CourseOffering],
+    student_dept: &str,
+) -> Option<&'a crate::domain::course_offering::CourseOffering> {
+    if candidates.is_empty() {
+        return None;
+    }
+    // Prefer student's own department
+    if !student_dept.is_empty() {
+        if let Some(matched) = candidates.iter().find(|o| o.dept_code == student_dept) {
+            return Some(matched);
+        }
+    }
+    // Fallback: first candidate
+    candidates.first().copied()
 }

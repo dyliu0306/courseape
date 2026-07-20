@@ -191,19 +191,19 @@ courseape init --department "資管系"
 7. 用學生語言回答
 
 **如果成績尚未分析**（`grades_analyzed: false`）：
+
+`prepare graduation` 現在會自動解析 HTML 並匯入成績。若自動解析失敗或需要重新解析：
 1. 匯出成績 HTML 元資料：
    ```bash
    courseape data export --scope grade-html
    ```
-   回傳 JSON 包含 `path` 欄位，指向 HTML 檔案位置
-2. 讀取該路徑的 HTML 檔案
-3. 分析 HTML，對每一筆課程：
-   - 課程名稱、學分數、狀態（及格/不及格/停修）、學期代碼、成績
-   - **通識向度**：用課程名稱在歷史開課清單中比對 OP_TYPE
-4. 產出 JSON 並匯入：
+2. 讀取 HTML 檔案並分析
+3. 產出 JSON 並匯入：
    ```bash
    courseape data import --scope grades --file <path>
    ```
+
+**成績已自動 dedup 重修**：同課程名稱有多筆紀錄時，保留最新結果；若最新為不及格但有更早的及格紀錄，保留及格紀錄。
 
 ---
 
@@ -469,8 +469,10 @@ courseape data import --scope schedule --file schedule.json
 | `courseape data export --scope grade-html` | 匯出成績 HTML 元資料（含 `path`） |
 | `courseape data export --scope offerings` | 匯出全部學期開課（含 OP_TYPE） |
 | `courseape data export --scope schedule` | 匯出選課時程 |
+| `courseape data export --scope requirement-parsed` | 匯出已解析的修業辦法（JSON） |
 | `courseape data import --scope grades --file <path>` | 匯入 Agent 分析的成績 JSON |
 | `courseape data import --scope schedule --file <path>` | 匯入選課時程 JSON |
+| `courseape data import --scope requirement-parsed --file <path>` | 匯入已解析的修業辦法 JSON（快取） |
 | `courseape data purge` | 清除所有快取、session、snapshot（保留鑰匙圈） |
 
 ### 同步

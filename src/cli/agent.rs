@@ -374,7 +374,7 @@ async fn prepare_graduation(_cli: &Cli) -> anyhow::Result<()> {
         if res.status != 200 || !res.body_bytes.starts_with(b"%PDF-") {
             anyhow::bail!("Requirement download did not return a valid PDF");
         }
-        let (hash, path) = storage::snapshot::SnapshotArchive::save_as(
+        let (hash, path) = storage::snapshot::SnapshotArchive::save_fixed(
             &format!("requirements_{}_{}", enroll_year, dept_code),
             "pdf",
             &res.body_bytes,
@@ -405,6 +405,32 @@ async fn prepare_graduation(_cli: &Cli) -> anyhow::Result<()> {
             storage::snapshot::SnapshotArchive::save("grades", &grade_result.body_bytes)?;
         eprintln!("  ✓ 已下載 (hash: {}...)", &hash[..16]);
         result["grade_html_path"] = json!(path.to_string_lossy());
+    }
+
+    // 2b. Parse grades HTML and import into DB (if not already analyzed)
+    let has_analyzed = repo
+        .list_analyzed_grades()
+        .ok()
+        .map(|g| !g.is_empty())
+        .unwrap_or(false);
+    if !has_analyzed {
+        if let Some(grade_path) = storage::snapshot::SnapshotArchive::newest_valid_grade(None)? {
+            eprintln!("  解析成績 HTML...");
+            let html_bytes = std::fs::read(&grade_path)?;
+            let html = String::from_utf8_lossy(&html_bytes);
+            let mut courses = crate::parsers::grade_html::parse_grade_html(&html);
+            // Dedup retakes: keep latest/best for same course name
+            courses = crate::parsers::grade_html::dedup_retakes(courses);
+            let count = courses.len();
+            if count > 0 {
+                repo.upsert_analyzed_grades(&courses)?;
+                eprintln!("  ✓ 已解析並匯入 {} 筆成績", count);
+            } else {
+                eprintln!("  ⚠ 未從 HTML 解析到課程");
+            }
+        }
+    } else {
+        eprintln!("  ✓ 成績已分析");
     }
 
     // 3. Historical offerings
