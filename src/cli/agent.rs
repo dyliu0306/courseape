@@ -385,6 +385,23 @@ async fn prepare_graduation(_cli: &Cli) -> anyhow::Result<()> {
     };
     result["requirements_path"] = json!(req_path.to_string_lossy());
 
+    // Auto-extract PDF text if not already cached
+    let parsed_path = repo.get_parsed_requirement_path(enroll_year, dept_code)?;
+    if parsed_path.is_none() {
+        match crate::parsers::pdf::extract_and_save(&req_path) {
+            Ok(txt_path) => {
+                repo.save_parsed_requirement(enroll_year, dept_code, &txt_path.to_string_lossy())?;
+                eprintln!("  ✓ 已解析修業辦法 PDF → {}", txt_path.display());
+                result["requirement_txt_path"] = json!(txt_path.to_string_lossy());
+            }
+            Err(e) => {
+                eprintln!("  ⚠ PDF 文字擷取失敗: {}。Agent 可用 PDF Skill 讀取。", e);
+            }
+        }
+    } else {
+        eprintln!("  ✓ 修業辦法已解析");
+    }
+
     // 2. Grades HTML
     eprintln!("[2/3] 下載歷年成績...");
     let session =

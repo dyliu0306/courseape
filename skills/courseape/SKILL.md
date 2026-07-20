@@ -22,9 +22,9 @@ metadata:
 
 ## PREREQUISITE
 
-PDF Skill 必須已安裝。確認方式：
-在 Agent 的 skill 目錄中搜尋含 PDF 閱讀功能的 Skill（如 `pdf`、`docx` 等）。
-若未找到，CourseApe 的 `skills install` 會自動檢查並提示。
+修業辦法 PDF 會自動解析為純文字（`.txt`），Agent 可直接讀取，不需額外安裝 PDF Skill。
+
+若自動解析失敗（少數特殊 PDF 格式），Agent 可用 PDF Skill 手動讀取。
 
 ---
 
@@ -173,7 +173,11 @@ courseape init --department "資管系"
 **流程**：
 1. `courseape agent doctor` — 檢查狀態
 2. 自動補齊所有缺失資料（登入、profile、prepare graduation）
-3. 讀取修業辦法 PDF（使用 PDF Skill）
+3. 讀取修業辦法（已自動解析為純文字）：
+   ```bash
+   courseape data export --scope requirement-parsed
+   ```
+   或直接讀取 `prepare graduation` 回傳的 `requirement_txt_path` 檔案
 4. 匯出已分析成績：
    ```bash
    courseape data export --scope grades
