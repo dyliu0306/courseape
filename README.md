@@ -15,6 +15,16 @@
 
 ## 安裝
 
+### 0. 由 Agent 自動安裝
+
+在 AI Agent（OpenCode、Codex、Claude Code 等）的對話中貼上：
+
+```
+幫我安裝 https://github.com/dyliu0306/courseape
+```
+
+Agent 會自動完成 npm 安裝、帳密設定、Skill 安裝。
+
 ### 1. 安裝 CLI
 
 ```
