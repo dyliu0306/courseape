@@ -53,8 +53,8 @@ pub async fn run_login(_cli: &Cli) -> anyhow::Result<()> {
     eprintln!("Logging in to iTouch...");
     let (cookie, login_token) = ItouchConnector::login(&creds.student_id, &creds.password).await?;
 
-    // Save credentials to keyring if they came from env vars
-    if StoredCredentials::load()?.is_none() && std::env::var("CYCU_USERNAME").is_ok() {
+    // Save credentials to keyring on first successful login (from any source)
+    if StoredCredentials::load()?.is_none() {
         creds.save()?;
         eprintln!("Credentials saved to OS keyring.");
     }
