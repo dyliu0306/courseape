@@ -97,7 +97,11 @@ impl ItouchConnector {
         }
 
         if !Self::validate_session(&cookie).await? {
-            anyhow::bail!("Login failed. iTouch did not accept the authenticated session.");
+            anyhow::bail!(
+                "iTouch 登入成功但 session 驗證失敗。\n\
+                 可能原因：(1) 憑證過期或帳號鎖定 (2) 學校系統維護中 (3) 網路/VPN 問題\n\
+                 嘗試：courseape credentials set 重新設定憑證，或稍後再試"
+            );
         }
 
         Ok((cookie, login_token))
@@ -135,9 +139,21 @@ impl ItouchConnector {
         }
         let result = Self::fetch_grades(cookie).await?;
         if result.status != 200 || result.body_bytes.is_empty() {
+            eprintln!(
+                "  Session check: HTTP {} / {} bytes",
+                result.status,
+                result.body_bytes.len()
+            );
             return Ok(false);
         }
-        Ok(is_authenticated_grade_body(&result.body_bytes))
+        let body = String::from_utf8_lossy(&result.body_bytes);
+        let authenticated = is_authenticated_grade_body(&result.body_bytes);
+        if !authenticated {
+            let snippet: String = body.chars().take(120).collect();
+            eprintln!("  Session check: grade page not authenticated");
+            eprintln!("  Response preview: {}", snippet);
+        }
+        Ok(authenticated)
     }
 }
 
@@ -146,26 +162,26 @@ pub fn is_authenticated_grade_body(body: &[u8]) -> bool {
         return false;
     }
     let body = String::from_utf8_lossy(body).to_lowercase();
-    let rejected = body.contains("log in")
-        || body.contains("login2.jsp")
+    // Positive: must contain something that looks like grade page content
+    let has_grade_content = body.contains("歷年成績")
+        || body.contains("學年度")
+        || body.contains("s_grade")
+        || body.contains("semester")
+        || body.contains("學分")
+        || body.contains("及格")
+        || body.contains("不及格")
+        || body.contains("停修")
+        || body.contains("查無")
+        || (body.contains("<table") && (body.contains("<td") || body.contains("<th")));
+    // Negative: login/expired/maintenance page markers
+    let rejected = body.contains("login2.jsp")
         || body.contains("loginfail")
         || body.contains("name=\"usernm\"")
         || body.contains("name='usernm'")
         || body.contains("登入超時")
-        || body.contains("重新登入");
-    let table = body.contains("<table") || body.contains("<td");
-    let grade_marker = [
-        "歷年成績",
-        "學年度",
-        "學分",
-        "及格",
-        "不及格",
-        "停修",
-        "查無",
-    ]
-    .iter()
-    .any(|marker| body.contains(marker));
-    !rejected && table && grade_marker
+        || body.contains("重新登入")
+        || body.contains("系統維護");
+    has_grade_content && !rejected
 }
 
 /// Collect cookie name=value pairs from Set-Cookie headers.
@@ -247,8 +263,30 @@ mod tests {
         assert!(!is_authenticated_grade_body(
             "<html>系統維護中</html>".as_bytes()
         ));
+        assert!(!is_authenticated_grade_body(
+            "<html><form name='usernm'><input></form></html>".as_bytes()
+        ));
+    }
+
+    #[test]
+    fn accepts_real_grade_page_variants() {
+        // Standard grade page
         assert!(is_authenticated_grade_body(
             "<html><table><td>歷年成績</td></table></html>".as_bytes()
+        ));
+        // Page with table structure but different markers
+        assert!(is_authenticated_grade_body(
+            "<html><table><th>學年度</th><td>1141</td></table></html>".as_bytes()
+        ));
+        // Page mentioning s_grade URL
+        assert!(is_authenticated_grade_body(
+            "<html>query: s_grade.jsp result</html>".as_bytes()
+        ));
+        // Empty body
+        assert!(!is_authenticated_grade_body(b""));
+        // Generic HTML with no grade markers
+        assert!(!is_authenticated_grade_body(
+            "<html>hello</html>".as_bytes()
         ));
     }
 
