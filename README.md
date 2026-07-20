@@ -21,9 +21,10 @@
 
 ```
 幫我安裝 https://github.com/dyliu0306/courseape
+並告訴我這怎麼用？能用來做甚麼？
 ```
 
-Agent 會自動完成 npm 安裝、帳密設定、Skill 安裝。
+Agent 會自動完成 npm 安裝、帳密設定、Skill 安裝，並引導你使用。選這個的話，以下步驟可以跳過。
 
 ### 1. 安裝 CLI
 
