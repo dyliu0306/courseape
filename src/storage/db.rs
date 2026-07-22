@@ -222,7 +222,9 @@ fn migrate_requirements(conn: &Connection) -> anyhow::Result<()> {
         |row| row.get::<_, i32>(0),
     )? > 0;
     if !has_col {
-        conn.execute_batch("ALTER TABLE requirements ADD COLUMN parsed_json_path TEXT NOT NULL DEFAULT ''")?;
+        conn.execute_batch(
+            "ALTER TABLE requirements ADD COLUMN parsed_json_path TEXT NOT NULL DEFAULT ''",
+        )?;
     }
     Ok(())
 }

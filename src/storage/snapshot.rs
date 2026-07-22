@@ -55,7 +55,11 @@ impl SnapshotArchive {
     /// Save with a fixed, deterministic filename (no hash).
     /// Overwrites previous file with the same name.
     /// Returns (sha256_hash, file_path).
-    pub fn save_fixed(name: &str, extension: &str, data: &[u8]) -> anyhow::Result<(String, PathBuf)> {
+    pub fn save_fixed(
+        name: &str,
+        extension: &str,
+        data: &[u8],
+    ) -> anyhow::Result<(String, PathBuf)> {
         let dir = snapshot_dir()?;
         let hash = {
             let mut hasher = Sha256::new();
@@ -70,7 +74,11 @@ impl SnapshotArchive {
 
     /// Read a fixed-name file if it exists and passes a freshness check.
     #[allow(dead_code)]
-    pub fn read_fixed(name: &str, extension: &str, max_age_hours: Option<u64>) -> anyhow::Result<Option<PathBuf>> {
+    pub fn read_fixed(
+        name: &str,
+        extension: &str,
+        max_age_hours: Option<u64>,
+    ) -> anyhow::Result<Option<PathBuf>> {
         let dir = snapshot_dir()?;
         let path = dir.join(format!("{}.{}", name, extension));
         if !path.exists() {

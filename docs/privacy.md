@@ -47,7 +47,7 @@ CourseApe 使用獨立的 OS 鑰匙圈條目（`courseape/cycu-itouch`）。
 CourseApe 只連線到：
 - `itouch.cycu.edu.tw` — 登入、成績、開課查詢
 - `cmap.cycu.edu.tw` — 課綱 PDF 下載
-- `registry.npmjs.org` — npm 套件安裝（僅安裝時）
+- `registry.npmjs.org` — npm 套件安裝／更新，以及每 4 小時最多一次的最新版檢查
 
 ## 清除所有資料
 

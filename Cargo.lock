@@ -508,7 +508,7 @@ checksum = "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b"
 
 [[package]]
 name = "courseape"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "anyhow",
  "chrono",
@@ -517,6 +517,7 @@ dependencies = [
  "csv",
  "dirs",
  "encoding_rs",
+ "fs2",
  "hex",
  "keyring",
  "pdf-extract",
@@ -526,12 +527,14 @@ dependencies = [
  "rprompt",
  "rusqlite",
  "scraper",
+ "semver",
  "serde",
  "serde_json",
  "sha2",
  "thiserror 2.0.18",
  "tokio",
  "url",
+ "windows-sys 0.59.0",
  "zeroize",
 ]
 
@@ -858,6 +861,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cb4cb245038516f5f85277875cdaa4f7d2c9a0fa0468de06ed190163b1581fcf"
 dependencies = [
  "percent-encoding",
+]
+
+[[package]]
+name = "fs2"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9564fc758e15025b46aa6643b1b77d047d1a56a1aea6e01002ac0c7026876213"
+dependencies = [
+ "libc",
+ "winapi",
 ]
 
 [[package]]
@@ -2263,6 +2276,12 @@ dependencies = [
  "servo_arc",
  "smallvec",
 ]
+
+[[package]]
+name = "semver"
+version = "1.0.28"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8a7852d02fc848982e0c167ef163aaff9cd91dc640ba85e263cb1ce46fae51cd"
 
 [[package]]
 name = "serde"

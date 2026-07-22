@@ -37,7 +37,10 @@ fn builtin_platforms() -> Vec<(&'static str, Platform)> {
 
 fn detect_extra_platforms() -> Vec<Platform> {
     let home = dirs::home_dir().unwrap_or_default();
-    let builtin_paths: Vec<_> = builtin_platforms().into_iter().map(|(_, p)| p.path).collect();
+    let builtin_paths: Vec<_> = builtin_platforms()
+        .into_iter()
+        .map(|(_, p)| p.path)
+        .collect();
     let candidates = [
         home.join(".agents").join("skills"),
         home.join(".config").join("opencode").join("skills"),

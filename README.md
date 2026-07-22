@@ -119,7 +119,7 @@ Agent 會自動：
 | 帳密 | 系統鑰匙圈，不出現在任何檔案 |
 | 成績 | 本機 SQLite 資料庫 |
 | AI 分析 | CLI 預設遮罩個資；若 Agent 將資料送給外部 AI，仍受該 Agent 服務的隱私政策約束 |
-| 網路 | CourseApe 只連 CYCU 服務：iTouch 與 cmap；npm 只在安裝／更新時連線 |
+| 網路 | CourseApe 連線至 CYCU iTouch、cmap；每 4 小時最多向 npm registry 查詢一次最新版本；npm 安裝／更新時亦會連線 |
 
 ## 限制
 
@@ -163,6 +163,8 @@ courseape agent prepare planning
 - [開發指南](https://github.com/dyliu0306/courseape/blob/master/CONTRIBUTING.md) — 建置、測試、發布流程
 
 ## 更新
+
+CourseApe 每 4 小時最多向 npm 檢查一次最新版；若有新版本，會在 stderr 顯示更新提示，不影響命令輸出或 Agent JSON。
 
 ```bash
 npm update -g @dyliu0306/courseape

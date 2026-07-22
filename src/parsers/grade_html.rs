@@ -392,8 +392,24 @@ mod tests {
     #[test]
     fn test_dedup_retakes_keeps_passed() {
         let courses = vec![
-            CompletedCourse { code: "".into(), name: "微積分".into(), credits: 3, status: "不及格".into(), term: "1121".into(), score: Some(45), category: "必修".into() },
-            CompletedCourse { code: "".into(), name: "微積分".into(), credits: 3, status: "及格".into(), term: "1131".into(), score: Some(72), category: "必修".into() },
+            CompletedCourse {
+                code: "".into(),
+                name: "微積分".into(),
+                credits: 3,
+                status: "不及格".into(),
+                term: "1121".into(),
+                score: Some(45),
+                category: "必修".into(),
+            },
+            CompletedCourse {
+                code: "".into(),
+                name: "微積分".into(),
+                credits: 3,
+                status: "及格".into(),
+                term: "1131".into(),
+                score: Some(72),
+                category: "必修".into(),
+            },
         ];
         let result = dedup_retakes(courses);
         assert_eq!(result.len(), 1);
@@ -404,8 +420,24 @@ mod tests {
     #[test]
     fn test_dedup_retakes_latest_failed_no_pass() {
         let courses = vec![
-            CompletedCourse { code: "".into(), name: "物理".into(), credits: 3, status: "不及格".into(), term: "1121".into(), score: Some(50), category: "必修".into() },
-            CompletedCourse { code: "".into(), name: "物理".into(), credits: 3, status: "不及格".into(), term: "1131".into(), score: Some(30), category: "必修".into() },
+            CompletedCourse {
+                code: "".into(),
+                name: "物理".into(),
+                credits: 3,
+                status: "不及格".into(),
+                term: "1121".into(),
+                score: Some(50),
+                category: "必修".into(),
+            },
+            CompletedCourse {
+                code: "".into(),
+                name: "物理".into(),
+                credits: 3,
+                status: "不及格".into(),
+                term: "1131".into(),
+                score: Some(30),
+                category: "必修".into(),
+            },
         ];
         let result = dedup_retakes(courses);
         assert_eq!(result.len(), 1);

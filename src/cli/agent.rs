@@ -254,7 +254,10 @@ async fn run_setup(cli: &Cli, department_query: Option<&str>) -> anyhow::Result<
         };
         repo.upsert_profile(&profile)?;
         eprintln!("  ✓ 自動設定入學年度: {:?}", enroll_year);
-        if current_profile.as_ref().is_none_or(|p| p.dept_code.is_none()) {
+        if current_profile
+            .as_ref()
+            .is_none_or(|p| p.dept_code.is_none())
+        {
             eprintln!("  ⚠ 系所尚未設定。執行 courseape agent setup --department \"你的系所\"");
         }
         steps_completed.push("profile_partial");

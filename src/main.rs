@@ -11,6 +11,7 @@ mod output;
 mod parsers;
 mod redact;
 mod storage;
+mod update;
 
 #[derive(Clone, Copy, Default, ValueEnum)]
 pub enum OutputFormat {
@@ -360,12 +361,13 @@ pub enum ScheduleCommands {
 }
 
 fn main() {
-    let cli = Cli::parse();
-
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
         .expect("Failed to create tokio runtime");
+
+    rt.block_on(update::check_and_notify());
+    let cli = Cli::parse();
 
     rt.block_on(async {
         if let Err(e) = run_command(cli).await {

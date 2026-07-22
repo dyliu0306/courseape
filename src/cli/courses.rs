@@ -318,7 +318,10 @@ pub async fn run(cmd: &CoursesCommands, cli: &Cli) -> anyhow::Result<()> {
             eprintln!("需重修課程（不及格/停修）：");
             let mut retake_matched = 0;
             let shortlist_codes = repo.list_shortlist(term)?;
-            let student_dept = repo.get_profile()?.and_then(|p| p.dept_code).unwrap_or_default();
+            let student_dept = repo
+                .get_profile()?
+                .and_then(|p| p.dept_code)
+                .unwrap_or_default();
             for fc in &failed_courses {
                 // Match by name: exact match first, then contains.
                 // When multiple matches exist, prefer student's own department.
@@ -330,13 +333,18 @@ pub async fn run(cmd: &CoursesCommands, cli: &Cli) -> anyhow::Result<()> {
                     })
                     .flatten()
                     .or_else(|| {
-                        let exact: Vec<_> = offerings.iter().filter(|o| o.name == fc.name).collect();
+                        let exact: Vec<_> =
+                            offerings.iter().filter(|o| o.name == fc.name).collect();
                         pick_best_section(&exact, &student_dept)
                     })
                     .or_else(|| {
-                        let partial: Vec<_> = offerings.iter().filter(|o| {
-                            o.name.contains(fc.name.as_str()) || fc.name.contains(o.name.as_str())
-                        }).collect();
+                        let partial: Vec<_> = offerings
+                            .iter()
+                            .filter(|o| {
+                                o.name.contains(fc.name.as_str())
+                                    || fc.name.contains(o.name.as_str())
+                            })
+                            .collect();
                         pick_best_section(&partial, &student_dept)
                     });
                 if let Some(offering) = matched {

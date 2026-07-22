@@ -29,7 +29,9 @@ pub async fn run(cmd: &DataCommands, cli: &Cli) -> anyhow::Result<()> {
                         eprintln!("No analyzed grades found.");
                         eprintln!("Steps to import grades:");
                         eprintln!("  1. courseape sync grades          # 下載成績 HTML");
-                        eprintln!("  2. 在 AI Agent 中說「分析我的成績」  # Agent 解析 HTML 後匯入");
+                        eprintln!(
+                            "  2. 在 AI Agent 中說「分析我的成績」  # Agent 解析 HTML 後匯入"
+                        );
                         eprintln!("  3. courseape data import --scope grades --file <path.json>  # 或手動匯入");
                     } else {
                         println!("{}", serde_json::to_string_pretty(&grades)?);
@@ -78,7 +80,9 @@ pub async fn run(cmd: &DataCommands, cli: &Cli) -> anyhow::Result<()> {
                         all_offerings.len()
                     );
                     if all_offerings.is_empty() {
-                        eprintln!("提示：執行 courseape agent prepare graduation 同步歷史開課資料。");
+                        eprintln!(
+                            "提示：執行 courseape agent prepare graduation 同步歷史開課資料。"
+                        );
                     }
                     println!("{}", serde_json::to_string_pretty(&all_offerings)?);
                 }
@@ -97,14 +101,20 @@ pub async fn run(cmd: &DataCommands, cli: &Cli) -> anyhow::Result<()> {
                     // Export parsed requirement JSON if cached
                     let profile = repo.get_profile()?;
                     let year = profile.as_ref().and_then(|p| p.enroll_year).unwrap_or(112);
-                    let dept = profile.as_ref().and_then(|p| p.dept_code.as_deref()).unwrap_or("");
+                    let dept = profile
+                        .as_ref()
+                        .and_then(|p| p.dept_code.as_deref())
+                        .unwrap_or("");
                     match repo.get_parsed_requirement_path(year, dept)? {
                         Some(path) => {
                             let content = std::fs::read_to_string(&path)?;
                             println!("{}", content);
                         }
                         None => {
-                            eprintln!("No parsed requirement found for year {} dept {}.", year, dept);
+                            eprintln!(
+                                "No parsed requirement found for year {} dept {}.",
+                                year, dept
+                            );
                             eprintln!("Run `courseape agent prepare graduation` first, then have Agent parse the PDF.");
                             eprintln!("Import parsed result: courseape data import --scope requirement-parsed --file <path>");
                         }
@@ -180,7 +190,8 @@ pub async fn run(cmd: &DataCommands, cli: &Cli) -> anyhow::Result<()> {
                     let value: serde_json::Value = serde_json::from_str(&json_str)?;
                     let year = value["year"]
                         .as_u64()
-                        .ok_or_else(|| anyhow::anyhow!("Missing 'year' field"))? as u32;
+                        .ok_or_else(|| anyhow::anyhow!("Missing 'year' field"))?
+                        as u32;
                     let dept_code = value["dept_code"]
                         .as_str()
                         .ok_or_else(|| anyhow::anyhow!("Missing 'dept_code' field"))?;
@@ -211,6 +222,7 @@ pub async fn run(cmd: &DataCommands, cli: &Cli) -> anyhow::Result<()> {
             eprintln!("Purging all cached data, session, and snapshots...");
             crate::auth::session::Session::delete()?;
             storage::snapshot::SnapshotArchive::purge()?;
+            crate::update::clear_cache()?;
             if let Some(dir) = dirs::data_dir().or_else(dirs::config_dir) {
                 let db_path = dir.join("courseape").join("courseape.db");
                 if db_path.exists() {
