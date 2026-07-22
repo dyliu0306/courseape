@@ -21,7 +21,7 @@
 
 ```
 幫我安裝 https://github.com/dyliu0306/courseape
-並告訴我這怎麼用？能用來做甚麼？
+並告訴我怎麼登入？能用來做甚麼？
 ```
 
 Agent 會自動完成 npm 安裝、Skill 安裝，並引導你使用。你仍須在cmd內自行登入一次。
